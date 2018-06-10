@@ -88,3 +88,7 @@ def detailed_plots(path):
 
         # code_debugger()
 
+def summary_plots(path,axes=None):
+
+    files=pd.read_csv(path+'files.csv')
+    for idx,f in files.iterrows():

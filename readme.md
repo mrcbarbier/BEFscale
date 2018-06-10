@@ -1,10 +1,10 @@
 Simulation experiments for multi-scale ecological interactions.
 =======
 
-##Requirements:
+## Requirements:
  Python 2.7, libraries: numpy, scipy, pandas, matplotlib
 
-##Examples:
+## Examples:
 
  *Basic run*
 
@@ -18,12 +18,13 @@ Simulation experiments for multi-scale ecological interactions.
 
  *Run with/out multiscale interactions (without is faster, useful for tests)*
 
+    python landscapesimu.py multiscale=0  # (None)
     python landscapesimu.py multiscale  # (All interactions)
     python landscapesimu.py multiscale=all # (All interactions)
     python landscapesimu.py multiscale=competition # (Only competition)
 
 
-##Where to edit:
+## Where to edit:
 
    Parameters and values to iterate over in axes: landscapesimu.py
    Plots: plots.py

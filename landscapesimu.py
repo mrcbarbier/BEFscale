@@ -9,8 +9,9 @@ def loop(axes,path,rerun=0,multiscale=1,**kwargs):
     Examples:
         axes=[ ('species', [1,10,100] ), ('landx',[10,100])   ]
 
-        will iterate over all possible combinations of species number and landscape width among given values.
-        """
+        will iterate over all possible combinations of species number and landscape width among given values,
+        save results in directory tree in path, and plot results.
+    """
 
 
 
@@ -57,4 +58,8 @@ if __name__=='__main__':
     loop(axes=axes,path=path,rerun='rerun' in sys.argv,multiscale=multiscale)
 
     # Plots
+    # Detailed plots for each simulation
     detailed_plots(path)
+
+    # Summary plots for BEF over parameter values
+    summary_plots(path,axes=axes)

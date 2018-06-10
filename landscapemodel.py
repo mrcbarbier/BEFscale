@@ -1,5 +1,11 @@
 from utilities import *
 
+#===========================================================================================================
+
+# MODEL
+
+#===========================================================================================================
+
 class LandscapeModel():
     """Main Model object: given parameters, will generate matrices, run dynamics, load and save."""
 
@@ -7,9 +13,9 @@ class LandscapeModel():
     dft_prm={
         'species':30,
 
-        #Landscape size
-        'landx':100,
-        'landy':100,
+        #Landscape size -- Keep multiples of 2 for FFT
+        'landx':128,
+        'landy':128,
 
         #Abundance of each species at each pixel
         'n': {
@@ -47,10 +53,12 @@ class LandscapeModel():
 
         #Trophic interactions
         'trophic':{
-            'mean':0.5,
+            'mean':0.5, 'std':0.1,
+            'distribution':'normal',
+            'shape':('species','species'),
             'efficiency':0.9,
-            'distance':.5,
-            'width':.5,
+            'distance':.5, #Distance of center of eating range to predator trait
+            'width':.5, #Width of eating range (if < distance, predator cannot eat equal size)
             'rangeexp':1, #Exponent for how eating range (size range of edible prey) changes with trait value
             'multiscale':0, #Switch ON/OFF multiscale
             'traitexp': 1, #Exponent for how spatial range of interaction changes with trait value
@@ -86,15 +94,18 @@ class LandscapeModel():
         self.results=deepcopy(kwargs.pop('results',{}))
         self.prm=deepcopy(kwargs.pop('parameters',LandscapeModel.dft_prm))
         self.set_params(**kwargs)
+        self.PARALLEL_LOCK=0
 
 
-    def save(self,path):
+    def save(self,path,suffix=''):
         """Save model parameters in prm.dat, dynamical variables in results.npz and other matrices in data.npz"""
         fpath=Path(path)
-        fpath.mkdir()
-        dumps(open(fpath+'prm.dat','w'),self.prm)
-        np.savez(fpath+'results',**self.results)
-        np.savez(fpath+'data',**self.data)
+        if not self.PARALLEL_LOCK:
+            # Prevent overwriting data if parallel processing
+            fpath.mkdir()
+            dumps(open(fpath+'prm.dat','w'),self.prm)
+            np.savez(fpath+'data',**self.data)
+        np.savez(fpath+'results{}'.format(suffix),**self.results)
 
 
     @classmethod
@@ -102,8 +113,8 @@ class LandscapeModel():
         """Load variables and other parameters from save files in path."""
         fpath=Path(path)
         prm=loads(open(fpath+'prm.dat','r'))
-        results=dict(np.load(fpath+'results.npz'))
         data=dict(np.load(fpath+'data.npz'))
+        results=dict(np.load(fpath+'results.npz'))
         return klass(data=data,results=results,parameters=prm)
 
     def set_params(self,**kwargs):
@@ -132,6 +143,22 @@ class LandscapeModel():
             except:
                 pass
         return self.prm
+
+
+    def export_params(self,parameters=None):
+        """Flatten parameter structure to the format 'label_name'. """
+        if parameters is None:
+            parameters=self.prm
+        final={}
+        def recurs(path,dico):
+            if hasattr(dico,'keys'):
+                for i,j in dico.iteritems():
+                    recurs('{}_{}'.format(path,i),j )
+            else:
+                final[path]=dico
+        for label in parameters:
+            recurs(label,self.prm[label])
+        return final
 
     def generate(self):
         """Generate all the matrices based on parameters self.prm."""
@@ -180,7 +207,10 @@ class LandscapeModel():
         trait=data['size']
         dprm=prm['trophic']
         dist=np.add.outer(-trait,trait).astype('float') # Body size difference between predator and prey
-        mat=np.ones((N,N) )
+        if 'trophic' in data:
+            mat=data['trophic']
+        else:
+            mat=np.ones((N,N) )
 
         # Get center and width of eating range
         center,width=dprm.get('distance',1),dprm.get('range')
@@ -218,6 +248,8 @@ class LandscapeModel():
         data['growth']=growth*abioticfit
         data['mortality']=mortality*(1-abioticfit)
 
+
+
     def get_dx(self,t,x,calc_fluxes=False):
         """Get time derivatives (used in differential equation solver below)
 
@@ -234,7 +266,7 @@ class LandscapeModel():
 
         data=self.data
         prm=self.prm
-        mortality,growth,inter,disp=data['mortality'],data['growth'],data['trophic'],data['dispersal']
+        mortality,growth,trophic,disp=data['mortality'],data['growth'],data['trophic'],data['dispersal']
         N=prm['species']
         death=prm.get('death',10**-15)
         dead=np.where(x<death)
@@ -244,10 +276,21 @@ class LandscapeModel():
             typfluxes=['Trophic +', 'Trophic -', 'Dispersal', 'Competition', 'Linear']
             fluxes=np.zeros((5,)+x.shape)
 
-        #Predation
         rge=data['trophic_range']
         for i in range(N):
-            prey=np.where(inter[i]!=0)[0]
+
+            #Dispersal
+            if prm['dispersal']['multiscale']:
+                xx= ndimage.gaussian_filter(x[i], sigma=disp[i] )
+            else:
+                xx=ndimage.convolve(x[i],weights,mode='wrap')
+            dxdisp=disp*(xx-x[i])
+            dx[i]+=dxdisp
+            if calc_fluxes:
+                fluxes[2,i]+=np.abs(dxdisp)
+
+            #Predation
+            prey=np.where(trophic[i]!=0)[0]
             if not len(prey):
                 continue
             if prm['trophic']['multiscale']:
@@ -265,20 +308,6 @@ class LandscapeModel():
             if calc_fluxes:
                 fluxes[0,i]+=np.abs(dxpred)
                 fluxes[1,prey]+=np.abs(dxprey)
-
-            #Dispersal
-            if prm['dispersal']['multiscale']:
-                xx= ndimage.gaussian_filter(x[i], sigma=disp[i] )
-            else:
-                xx=ndimage.convolve(x[i],weights,mode='wrap')
-            # else:
-            dxdisp=prm['dispersal']['mean']*(xx-x[i])
-            # code_debugger()
-            dx[i]+=dxdisp
-
-            if calc_fluxes:
-                fluxes[2,i]+=np.abs(dxdisp)
-
         #Competition
         comp=data['competition']
         xc = x
@@ -296,6 +325,57 @@ class LandscapeModel():
             return dx,typfluxes,fluxes
         return dx
 
+    def get_lorentzian(self,a,x):
+        return 2*a/(a**2+x**2)
+
+    def get_dx_FT(self, t, xf):
+        """Get time derivatives in Fourier space (used in differential equation solver below) """
+        dx = np.zeros(x.shape)
+        dxdisp = np.zeros(x.shape)
+
+        data = self.data_FT
+        prm = self.prm
+        mortality, growth, trophic, disp,k = data['mortality'], data['growth'], data['trophic'], data['dispersal'],data['kFourier']
+        N = prm['species']
+
+        if calc_fluxes:
+            typfluxes = ['Trophic +', 'Trophic -', 'Dispersal', 'Competition', 'Linear']
+            fluxes = np.zeros((5,) + x.shape)
+
+        for i in range(N):
+            # Dispersal
+            dxdisp[i] = - k**2 * disp * xx
+            if calc_fluxes:
+                fluxes[2, i] += np.abs(dxdisp)
+
+            #Predation
+            prey = np.where(trophic[i] != 0)[0]
+            if not len(prey):
+                continue
+
+            Aij=trophic[i] * self.get_lorentzian(self.data['trophic_range'][i],k)
+            xx = x[i]
+
+            dxprey = - xx * Aij
+            dx[prey] += dxprey
+            dxpred = np.tensordot(Aij,x, axes=(0,0) ) * prm['trophic']['efficiency']
+            dx[i] += dxpred
+            if calc_fluxes:
+                fluxes[0, i] += np.abs(dxpred)
+                fluxes[1, prey] += np.abs(dxprey)
+
+        # Competition
+        comp = data['competition']
+        dxcomp = np.tensordot(comp, x*[ self.get_lorentzian(self.data['competition_range'][i],k) for i in range(N)], axes=(1, 0))
+        dxlin = growth - mortality
+        dx += dxlin - dxcomp
+
+        if calc_fluxes:
+            fluxes[3] += np.abs(dxcomp)
+            fluxes[4] += np.abs(dxlin)
+            return dx, typfluxes, fluxes
+        return ssignal.fftconvolve(x, dx) + dxdisp
+
     def evol(self,tmax=5,tsample=.1,dt=.1,keep='all',print_msg=1,**kwargs):
         """Time evolution of the model"""
 
@@ -304,24 +384,63 @@ class LandscapeModel():
             self.generate()
 
         x=self.results['n'][-1]
+        death = self.prm.get('death', 10 ** -15)
+
+        #Prepare data for Fourier Transformed dynamical equations (if used)
+        use_Fourier=kwargs.get('use_Fourier',0)
+        if use_Fourier:
+            data_FT={}
+            data=self.data
+            landscape=data['environment']
+            for i in ('mortality','growth','trophic','competition','dispersal'):
+                if i in data and data[i].shape[1:]==landscape.shape:
+                    data_FT[i]=np.array([ fft.fft2(data[i][j]) for j in range(data[i].shape[0]) ])
+                else:
+                    data_FT[i]=data[i]
+            data_FT['kFourier']= np.sqrt(np.abs(itertools.iproduct( fftfreq(landscape.shape[0]),fftfreq(landscape.shape[1]) )))
+            self.data_FT=data_FT
+            x=fft.fft2(x)
 
         t=0
         while t<tmax:
 
-            dx=self.get_dx(t,x)
+            if  use_Fourier:
+                dx=self.get_dx_FT(t,x)
+                x*=(1+dt*dx)
+            else:
+                dx=self.get_dx(t,x)
+                x*=(1+np.clip(dt* dx,-.999,None))
+                x[x<death]=0
             t+=dt
-            x*=(1+np.clip(dt* dx,-.999,None))
-            x[x<10**-10]=0
 
             if t%tsample <dt or t+dt > tmax:
                 if print_msg:
                     print('Time {}'.format(t) )
                 if keep=='all' or t+dt>tmax:
-                    self.results['n']=np.concatenate([self.results['n'],[x]])
+                    if use_Fourier:
+                        realx=fft.ifft2(x).real
+                    else:
+                        realx=x
+                    self.results['n']=np.concatenate([self.results['n'],[realx]])
 
         return 1
 
 
+
+#===========================================================================================================
+
+# LOOPER
+
+#===========================================================================================================
+
+def mp_run(array):
+    """Parallel processing utility function."""
+    path,Model,prm,results,tmax,tsample,keep,replica=array
+    model=Model(results=results,**prm)
+    model.PARALLEL_LOCK=True
+    model.evol(tmax=tmax,tsample=tsample,keep=keep)
+    model.save(path,overwrite=0,suffix=replica )
+    model.module['prey'].tree=None
 
 class Looper(object):
     """Allows to recursively loop over parameter range, running a Model then saving results in a tree of folders."""
@@ -350,10 +469,12 @@ class Looper(object):
             model.set_params(**kwargs)
         else:
             model=self.Model(**kwargs)
-        if not kwargs.get('reseed',1):
-            kwargs['model']=model #transmit the model further down the loop
+        for i in kwargs:
+            if i in model.export_params():
+                dic[i]=kwargs[i]
 
-        # dic.update(model.export_params())
+        if not kwargs.get('reseed',1):
+            kwargs['model']=model #transmit the model further down the loop instead of recreating it each time
 
         if 'replicas' in kwargs:
             '''Parallel processing'''
