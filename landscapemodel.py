@@ -59,16 +59,16 @@ class LandscapeModel():
             'efficiency':0.9,
             'distance':.5, #Distance of center of eating range to predator trait
             'width':.5, #Width of eating range (if < distance, predator cannot eat equal size)
-            'rangeexp':1, #Exponent for how eating range (size range of edible prey) changes with trait value
+            'range_exp':1, #Exponent for how eating range (size range of edible prey) changes with trait value
             'multiscale':0, #Switch ON/OFF multiscale
-            'traitexp': 1, #Exponent for how spatial range of interaction changes with trait value
+            'trait_exp': 1, #Exponent for how spatial range of interaction changes with trait value
         },
 
         #Dispersal
         'dispersal':{
             'mean':0.01,
             'multiscale':0,  #Switch ON/OFF multiscale
-            'traitexp': 1, #Exponent for how spatial range of interaction changes with trait value
+            'trait_exp': 1, #Exponent for how spatial range of interaction changes with trait value
 
         },
 
@@ -76,7 +76,7 @@ class LandscapeModel():
         'competition': {
             'mean': 0.1,
             'multiscale': 0, #Switch ON/OFF multiscale
-            'traitexp':1, #Exponent for how spatial range of interaction changes with trait value
+            'trait_exp':1, #Exponent for how spatial range of interaction changes with trait value
         },
 
         #Mortality
@@ -213,10 +213,11 @@ class LandscapeModel():
             mat=np.ones((N,N) )
 
         # Get center and width of eating range
-        center,width=dprm.get('distance',1),dprm.get('range')
-        if dprm.get('rangeexp',0)!=0:
+        center,width=dprm.get('distance',1),dprm.get('width',1)
+        range_exp=dprm.get('range_exp',0)
+        if not range_exp is 0:
             oldcenter=center
-            center= center*trait**rangeexp.reshape( trait.shape+(1,) )
+            center= center*(trait**range_exp).reshape( trait.shape+(1,) )
             width=width*center/oldcenter+np.min(np.abs(dist),axis=1)
 
         # Set interactions to zero if the prey does not fall in the eating range
@@ -229,13 +230,13 @@ class LandscapeModel():
         growth=np.zeros(N)
         growth[np.sum(mat,axis=1)<1 ]=1  #Species with no preys are heterotrophs
         growth[trait==np.min(trait)]=1  #The smallest species is also a heterotroph
-        data['trophic_range']=trait**prm['trophic']['traitexp'] #Spatial range scales with trait
+        data['trophic_range']=trait**prm['trophic']['trait_exp'] #Spatial range scales with trait
 
         #=== Generate dispersal
-        data['dispersal']=trait**prm['dispersal']['traitexp']
+        data['dispersal']=trait**prm['dispersal']['trait_exp']
 
         #=== Generate competition
-        data['competition_range']=trait**prm['dispersal']['traitexp']
+        data['competition_range']=trait**prm['dispersal']['trait_exp']
         data['competition']=np.eye(N)
 
         #=== Generate growth and mortality
@@ -284,7 +285,7 @@ class LandscapeModel():
                 xx= ndimage.gaussian_filter(x[i], sigma=disp[i] )
             else:
                 xx=ndimage.convolve(x[i],weights,mode='wrap')
-            dxdisp=disp*(xx-x[i])
+            dxdisp=disp[i]*(xx-x[i])
             dx[i]+=dxdisp
             if calc_fluxes:
                 fluxes[2,i]+=np.abs(dxdisp)
@@ -344,7 +345,7 @@ class LandscapeModel():
 
         for i in range(N):
             # Dispersal
-            dxdisp[i] = - k**2 * disp * xx
+            dxdisp[i] = - k**2 * disp[i] * xx
             if calc_fluxes:
                 fluxes[2, i] += np.abs(dxdisp)
 
@@ -376,6 +377,28 @@ class LandscapeModel():
             return dx, typfluxes, fluxes
         return ssignal.fftconvolve(x, dx) + dxdisp
 
+
+    def prep_FT(self,**kwargs):
+        """Prepare data for Fourier Transformed dynamical equations (if used)"""
+
+        use_Fourier = kwargs.get('use_Fourier',1)
+        if use_Fourier:
+            data_FT={}
+            data=self.data
+            landscape=data['environment']
+            for i in ('mortality','growth','trophic','competition','dispersal'):
+                if i in data and data[i].shape[1:]==landscape.shape:
+                    data_FT[i]=np.array([ fft.fft2(data[i][j]) for j in range(data[i].shape[0]) ])
+                else:
+                    data_FT[i]=data[i]
+            kx,ky=fftfreq(landscape.shape[0]), fftfreq(landscape.shape[1])
+            if use_Fourier=='reduced':
+                kx=kx[posquad]
+                ky=ky[posquad]
+            data_FT['kFourier']= np.abs(np.multiply.outer( kx,ky ))**0.5
+            self.data_FT=data_FT
+            x=fft.fft2(x)
+
     def evol(self,tmax=5,tsample=.1,dt=.1,keep='all',print_msg=1,**kwargs):
         """Time evolution of the model"""
 
@@ -386,20 +409,9 @@ class LandscapeModel():
         x=self.results['n'][-1]
         death = self.prm.get('death', 10 ** -15)
 
-        #Prepare data for Fourier Transformed dynamical equations (if used)
-        use_Fourier=kwargs.get('use_Fourier',0)
+        use_Fourier = kwargs.get('use_Fourier', 0)
         if use_Fourier:
-            data_FT={}
-            data=self.data
-            landscape=data['environment']
-            for i in ('mortality','growth','trophic','competition','dispersal'):
-                if i in data and data[i].shape[1:]==landscape.shape:
-                    data_FT[i]=np.array([ fft.fft2(data[i][j]) for j in range(data[i].shape[0]) ])
-                else:
-                    data_FT[i]=data[i]
-            data_FT['kFourier']= np.sqrt(np.abs(itertools.iproduct( fftfreq(landscape.shape[0]),fftfreq(landscape.shape[1]) )))
-            self.data_FT=data_FT
-            x=fft.fft2(x)
+            self.prep_FT(**kwargs)
 
         t=0
         while t<tmax:
@@ -418,7 +430,15 @@ class LandscapeModel():
                     print('Time {}'.format(t) )
                 if keep=='all' or t+dt>tmax:
                     if use_Fourier:
-                        realx=fft.ifft2(x).real
+                        if use_Fourier=='reduced':
+                            kx, ky = fftfreq(landscape.shape[0]), fftfreq(landscape.shape[1])
+                            x2=np.zeros(kx.shape+ky.shape)
+                            x2[np.logical_and(kx>=0,ky>=0)]=x
+                            x2[np.logical_and(kx<=0,ky>=0)]=-np.conj(x)
+                            x2[ky<0]+=-np.conj(x2[:,::-1])[ky<0]
+                        else:
+                            x2=x
+                        realx=fft.ifft2(x2).real
                     else:
                         realx=x
                     self.results['n']=np.concatenate([self.results['n'],[realx]])
@@ -439,7 +459,7 @@ def mp_run(array):
     model=Model(results=results,**prm)
     model.PARALLEL_LOCK=True
     model.evol(tmax=tmax,tsample=tsample,keep=keep)
-    model.save(path,overwrite=0,suffix=replica )
+    model.save(path,suffix=replica )
     model.module['prey'].tree=None
 
 class Looper(object):
@@ -506,7 +526,7 @@ class Looper(object):
                         model.results[var].matrix[:]=0
             if 'loop_trials' in kwargs:
                 del kwargs['loop_trials']
-            model.save(path,overwrite=1 )
+            model.save(path )
 
         table.append(dic)
         pd.DataFrame(table).to_csv(path+'files.csv')

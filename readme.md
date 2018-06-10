@@ -2,7 +2,8 @@ Simulation experiments for multi-scale ecological interactions.
 =======
 
 ## Requirements:
- Python 2.7, libraries: numpy, scipy, pandas, matplotlib
+ Python 2.7
+ Libraries: numpy, scipy, pandas, matplotlib
 
 ## Examples:
 

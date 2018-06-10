@@ -14,6 +14,16 @@ def detailed_plots(path):
         death=prm.get('death',10**-15) #Death threshold
 
 
+        #Plots of initial species abundance per patch
+        plt.figure()
+        panel=0
+        for i in range(N):
+            panel,ax=auto_subplot(panel,N)
+            plt.imshow(model.results['n'][0][i])#,vmin=0,vmax=1.2)
+            plt.colorbar()
+            plt.title('Species {}'.format(i))
+        plt.suptitle('Initial abundance')
+
         #Plots of species abundance per patch
         plt.figure()
         panel=0
@@ -22,7 +32,7 @@ def detailed_plots(path):
             plt.imshow(Nf[i])#,vmin=0,vmax=1.2)
             plt.colorbar()
             plt.title('Species {}'.format(i))
-        plt.suptitle('Abundance')
+        plt.suptitle('Final abundance')
 
         #Species environmental mortality
         plt.figure()
@@ -41,7 +51,6 @@ def detailed_plots(path):
             panel,ax=auto_subplot(panel,N)
             for t, typ in enumerate(typfluxes):
                 f=fluxes[t,i]/np.abs(dx[i])
-
                 f=np.mean(f)  #Average over all patches
                 # f=f.ravel()[np.argmax(Nf[i])]  #Values at most abundant patch
                 plt.bar(t,f)
@@ -91,4 +100,8 @@ def detailed_plots(path):
 def summary_plots(path,axes=None):
 
     files=pd.read_csv(path+'files.csv')
+    tables=[]
     for idx,f in files.iterrows():
+
+        model=LandscapeModel.load(f['path'])
+        Nf=model.results['n'][-1]

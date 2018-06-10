@@ -1,5 +1,5 @@
 import numpy as np, pandas as pd,scipy.integrate as scint, scipy.ndimage as ndimage, itertools
-import time,sys, matplotlib.pyplot as plt, scipy.fftpack as fft,scipy.signal as ssignal, os
+import time,sys, matplotlib.pyplot as plt, scipy.fftpack as fft,scipy.signal as ssignal, os, ast
 from copy import deepcopy
 
 
@@ -55,7 +55,7 @@ def loads(fil):
     txt=''
     for l in fil:
         txt+=l.strip()
-    return eval(txt,{},{'array':np.array,'nan':np.nan})
+    return ast.literal_eval(txt,{},{'array':np.array,'nan':np.nan})
 
 
 def rebuild_filelist(path,verbose=True):

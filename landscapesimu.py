@@ -1,10 +1,10 @@
 from landscapemodel import *
-
+from plots import *
 
 
 # ============= SIMULATIONS =================
 
-def loop(axes,path,rerun=0,multiscale=1,**kwargs):
+def loop(axes,path,rerun=0,multiscale=1,tmax=50,tsample=10,keep='all',**kwargs):
     """Iterate over parameters given in axes.
     Examples:
         axes=[ ('species', [1,10,100] ), ('landx',[10,100])   ]
@@ -13,13 +13,14 @@ def loop(axes,path,rerun=0,multiscale=1,**kwargs):
         save results in directory tree in path, and plot results.
     """
 
-
+    if not 'files.csv' in os.listdir(path):
+        rerun=1
 
     # Get default parameter values (see landscapemodel.py for parameter list)
-    prm=deepcopy(Landscape.dft_prm)
+    prm=deepcopy(LandscapeModel.dft_prm)
 
     for i in prm:
-        if 'multiscale' in prm[i]:
+        if 'multiscale' in str(prm[i]):
             if multiscale=='all' or i in multiscale:
                 prm[i]['multiscale']=1
 
@@ -29,7 +30,7 @@ def loop(axes,path,rerun=0,multiscale=1,**kwargs):
             prm[i]=j
 
     if rerun:
-        Looper(LandscapeModel).loop(tmax=500,tsample=10,keep='all',path=path,axes=axes,parameters=prm)
+        Looper(LandscapeModel).loop(tmax=tmax,tsample=tsample,keep=keep,path=path,axes=axes,parameters=prm)
         rebuild_filelist(path)
 
 
@@ -40,7 +41,10 @@ if __name__=='__main__':
     path = Path('RESULTS/beflandscape')
 
     # Multiscale?
-    multiscale='all'
+    multiscale=''#'all'
+
+    # Simulation length
+    tmax=500
 
     # Get options from command line
     for i in sys.argv:
@@ -51,11 +55,13 @@ if __name__=='__main__':
                 multiscale=i.split('=')[-1]
             else:
                 multiscale='all'
+        if 'tmax=' in i :
+            tmax=ast.literal_eval(i.split('=')[-1])
 
     # Loop over parameters given in axes
     # 'sys' is a dummy parameter allowing for replicas
     axes = [('sys', [0])]
-    loop(axes=axes,path=path,rerun='rerun' in sys.argv,multiscale=multiscale)
+    loop(axes=axes,path=path,tmax=tmax,rerun='rerun' in sys.argv,multiscale=multiscale)
 
     # Plots
     # Detailed plots for each simulation
