@@ -13,6 +13,7 @@ def loop(axes,path,rerun=0,multiscale=1,tmax=50,tsample=10,keep='all',**kwargs):
         save results in directory tree in path, and plot results.
     """
 
+    path=Path(path).mkdir()
     if not 'files.csv' in os.listdir(path):
         rerun=1
 
@@ -30,21 +31,25 @@ def loop(axes,path,rerun=0,multiscale=1,tmax=50,tsample=10,keep='all',**kwargs):
             prm[i]=j
 
     if rerun:
-        Looper(LandscapeModel).loop(tmax=tmax,tsample=tsample,keep=keep,path=path,axes=axes,parameters=prm)
+        Looper(LandscapeModel).loop(tmax=tmax,tsample=tsample,keep=keep,path=path,axes=axes,parameters=prm,**kwargs)
         rebuild_filelist(path)
 
 
 # Only run the following code if this script is executed directly
 if __name__=='__main__':
 
-    # Folder containing simulations
-    path = Path('RESULTS/beflandscape')
 
-    # Multiscale?
-    multiscale=''#'all'
+    path = Path('RESULTS/beflandscape')     # Folder containing simulations
+    rebuild_filelist(path)
+    multiscale=''#'all'     # Multiscale?
+    tmax,tsample=50, 1    # Simulation length
+    use_Fourier=0   # Optimized code using fourier transforms
 
-    # Simulation length
-    tmax=500
+    # Parameters to iterate over
+    axes = [
+        ('dispersal_mean',[0.01,1.]),
+        ('sys', [0])
+    ]
 
     # Get options from command line
     for i in sys.argv:
@@ -57,11 +62,14 @@ if __name__=='__main__':
                 multiscale='all'
         if 'tmax=' in i :
             tmax=ast.literal_eval(i.split('=')[-1])
+        if 'tsample=' in i :
+            tsample=ast.literal_eval(i.split('=')[-1])
+        if 'FT=' in i :
+            use_Fourier=ast.literal_eval(i.split('=')[-1])
 
     # Loop over parameters given in axes
-    # 'sys' is a dummy parameter allowing for replicas
-    axes = [('sys', [0])]
-    loop(axes=axes,path=path,tmax=tmax,rerun='rerun' in sys.argv,multiscale=multiscale)
+    # 'sys' is a dummy parameter standing in for replicas
+    loop(axes=axes,path=path,tmax=tmax,tsample=tsample,rerun='rerun' in sys.argv,multiscale=multiscale,use_Fourier=use_Fourier)
 
     # Plots
     # Detailed plots for each simulation

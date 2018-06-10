@@ -55,7 +55,7 @@ def loads(fil):
     txt=''
     for l in fil:
         txt+=l.strip()
-    return ast.literal_eval(txt,{},{'array':np.array,'nan':np.nan})
+    return eval(txt,{},{'array':np.array,'nan':np.nan})
 
 
 def rebuild_filelist(path,verbose=True):
@@ -142,6 +142,7 @@ class Path(str):
             cur+=Path(intdir)
             if not os.path.isdir(cur):
                 os.mkdir(cur)
+        return self
 
     def copy(self):
         return Path(self)

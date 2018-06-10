@@ -53,13 +53,18 @@ class LandscapeModel():
 
         #Trophic interactions
         'trophic':{
-            'mean':0.5, 'std':0.1,
+            #Coefficient values
+            'mean':1., 'std':0.1,
             'distribution':'normal',
             'shape':('species','species'),
             'efficiency':0.9,
-            'distance':.5, #Distance of center of eating range to predator trait
-            'width':.5, #Width of eating range (if < distance, predator cannot eat equal size)
+
+            #Eating range
+            'distance':.25, #Distance of center of eating range to predator trait
+            'width':.25, #Width of eating range (if < distance, predator cannot eat equal size)
             'range_exp':1, #Exponent for how eating range (size range of edible prey) changes with trait value
+
+            #Spatial scaling
             'multiscale':0, #Switch ON/OFF multiscale
             'trait_exp': 1, #Exponent for how spatial range of interaction changes with trait value
         },
@@ -109,13 +114,13 @@ class LandscapeModel():
 
 
     @classmethod
-    def load(klass,path):
+    def load(cls,path):
         """Load variables and other parameters from save files in path."""
         fpath=Path(path)
         prm=loads(open(fpath+'prm.dat','r'))
         data=dict(np.load(fpath+'data.npz'))
         results=dict(np.load(fpath+'results.npz'))
-        return klass(data=data,results=results,parameters=prm)
+        return cls(data=data,results=results,parameters=prm)
 
     def set_params(self,**kwargs):
         """If some parameter 'name' in the template 'label' is changed by
@@ -140,7 +145,7 @@ class LandscapeModel():
                     if not p in dico:
                         print('set_params forcing:',i,p,j)
                     dico[p]=j
-            except:
+            except TypeError:
                 pass
         return self.prm
 
@@ -161,7 +166,7 @@ class LandscapeModel():
         return final
 
     def generate(self):
-        """Generate all the matrices based on parameters self.prm."""
+        """Generate all the model coefficients based on parameters in self.prm."""
         prm=self.prm
         data=self.data
         N=prm['species']
@@ -329,10 +334,10 @@ class LandscapeModel():
     def get_lorentzian(self,a,x):
         return 2*a/(a**2+x**2)
 
-    def get_dx_FT(self, t, xf):
+    def get_dx_FT(self, t, x, calc_fluxes=0):
         """Get time derivatives in Fourier space (used in differential equation solver below) """
-        dx = np.zeros(x.shape)
-        dxdisp = np.zeros(x.shape)
+        dx = np.zeros(x.shape,dtype='complex')
+        dxdisp = np.zeros(x.shape,dtype='complex')
 
         data = self.data_FT
         prm = self.prm
@@ -345,7 +350,7 @@ class LandscapeModel():
 
         for i in range(N):
             # Dispersal
-            dxdisp[i] = - k**2 * disp[i] * xx
+            dxdisp[i] = - k**2 * disp[i] * x[i]
             if calc_fluxes:
                 fluxes[2, i] += np.abs(dxdisp)
 
@@ -354,12 +359,11 @@ class LandscapeModel():
             if not len(prey):
                 continue
 
-            Aij=trophic[i] * self.get_lorentzian(self.data['trophic_range'][i],k)
-            xx = x[i]
+            Aij=np.tensordot(trophic[i][prey] , self.get_lorentzian(self.data['trophic_range'][i],k),axes=0)
 
-            dxprey = - xx * Aij
+            dxprey = - x[i] * Aij
             dx[prey] += dxprey
-            dxpred = np.tensordot(Aij,x, axes=(0,0) ) * prm['trophic']['efficiency']
+            dxpred = np.sum(Aij*x[prey], axis=0 ) * prm['trophic']['efficiency']
             dx[i] += dxpred
             if calc_fluxes:
                 fluxes[0, i] += np.abs(dxpred)
@@ -375,29 +379,32 @@ class LandscapeModel():
             fluxes[3] += np.abs(dxcomp)
             fluxes[4] += np.abs(dxlin)
             return dx, typfluxes, fluxes
-        return ssignal.fftconvolve(x, dx) + dxdisp
+        return np.array([ssignal.fftconvolve(x[i], dx[i],'same') for i in range(N)]) + dxdisp
 
 
-    def prep_FT(self,**kwargs):
+    def prep_FT(self,x,**kwargs):
         """Prepare data for Fourier Transformed dynamical equations (if used)"""
 
         use_Fourier = kwargs.get('use_Fourier',1)
-        if use_Fourier:
-            data_FT={}
-            data=self.data
-            landscape=data['environment']
-            for i in ('mortality','growth','trophic','competition','dispersal'):
-                if i in data and data[i].shape[1:]==landscape.shape:
-                    data_FT[i]=np.array([ fft.fft2(data[i][j]) for j in range(data[i].shape[0]) ])
-                else:
-                    data_FT[i]=data[i]
-            kx,ky=fftfreq(landscape.shape[0]), fftfreq(landscape.shape[1])
-            if use_Fourier=='reduced':
-                kx=kx[posquad]
-                ky=ky[posquad]
-            data_FT['kFourier']= np.abs(np.multiply.outer( kx,ky ))**0.5
-            self.data_FT=data_FT
-            x=fft.fft2(x)
+        if not use_Fourier:
+            return x
+        data_FT={}
+        data=self.data
+        landscape=data['environment']
+        for i in ('mortality','growth','trophic','competition','dispersal'):
+            if i in data and data[i].shape[1:]==landscape.shape:
+                data_FT[i]=fft.fft2(data[i])
+            else:
+                data_FT[i]=data[i]
+        lx,ly=landscape.shape
+        kx,ky=fft.fftfreq(lx), fft.fftfreq(ly)
+        if use_Fourier=='reduced':
+            kx=kx[:lx/2]
+            ky=ky[:ly/2]
+        data_FT['kFourier']= np.abs(np.multiply.outer( kx,ky ))**0.5
+        self.data_FT=data_FT
+        x=fft.fft2(x/np.sum(x))
+        return x
 
     def evol(self,tmax=5,tsample=.1,dt=.1,keep='all',print_msg=1,**kwargs):
         """Time evolution of the model"""
@@ -406,12 +413,13 @@ class LandscapeModel():
         if kwargs.get('reseed',1):
             self.generate()
 
-        x=self.results['n'][-1]
+        x=self.results['n'][-1].copy()
+        totx=np.sum(x)
         death = self.prm.get('death', 10 ** -15)
 
         use_Fourier = kwargs.get('use_Fourier', 0)
         if use_Fourier:
-            self.prep_FT(**kwargs)
+            x=self.prep_FT(x,**kwargs)
 
         t=0
         while t<tmax:
@@ -431,8 +439,12 @@ class LandscapeModel():
                 if keep=='all' or t+dt>tmax:
                     if use_Fourier:
                         if use_Fourier=='reduced':
-                            kx, ky = fftfreq(landscape.shape[0]), fftfreq(landscape.shape[1])
-                            x2=np.zeros(kx.shape+ky.shape)
+                            lx,ly=landscape.shape
+                            x2=np.zeros(x.shape)
+                            x2[:lx/2,:ly/2]=x
+                            x2[lx/2:,:ly/2]-np.conj(x)
+                            x2[:lx/2,ly/2:]-np.conj(x)
+                            x2[lx/2:,ly/2:]=x
                             x2[np.logical_and(kx>=0,ky>=0)]=x
                             x2[np.logical_and(kx<=0,ky>=0)]=-np.conj(x)
                             x2[ky<0]+=-np.conj(x2[:,::-1])[ky<0]

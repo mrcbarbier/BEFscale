@@ -3,6 +3,7 @@ Simulation experiments for multi-scale ecological interactions.
 
 ## Requirements:
  Python 2.7
+
  Libraries: numpy, scipy, pandas, matplotlib
 
 ## Examples:
@@ -17,12 +18,15 @@ Simulation experiments for multi-scale ecological interactions.
 
     python landscapesimu.py path=xxx
 
- *Run with/out multiscale interactions (without is faster, useful for tests)*
+ *Run with/out multiscale interactions (without is faster, useful for tests)* (NB: brackets = optional/alternative)
 
-    python landscapesimu.py multiscale=0  # (None)
-    python landscapesimu.py multiscale  # (All interactions)
-    python landscapesimu.py multiscale=all # (All interactions)
-    python landscapesimu.py multiscale=competition # (Only competition)
+    python landscapesimu.py [multiscale=0]  # (None)
+    python landscapesimu.py multiscale[=all]  # (All interactions)
+    python landscapesimu.py multiscale=[trophic,competition]  # (Only one interaction)
+
+ *Change other parameters*
+
+    python landscapesimu.py tmax=500 tsample=10
 
 
 ## Where to edit:
