@@ -1,7 +1,9 @@
 from utilities import *
 
 class LandscapeModel():
+    """Main Model object: given parameters, will generate matrices, run dynamics, load and save."""
 
+    #Default parameters
     dft_prm={
         'species':30,
 
@@ -9,12 +11,7 @@ class LandscapeModel():
         'landx':100,
         'landy':100,
 
-        'mortality':{
-            'distribution':'uniform',
-            'range':(0.001,0.01),
-            'multiscale':1,
-        },
-
+        #Abundance of each species at each pixel
         'n': {
             'type':'variable',
             'shape': ('species','landx','landy'),
@@ -22,6 +19,7 @@ class LandscapeModel():
             'distribution': 'uniform',
         },
 
+        #Value of the environment at each pixel
         'environment':{
             'shape':('landx','landy'),
             'range':(0.,100.),
@@ -29,6 +27,7 @@ class LandscapeModel():
             'spectralexp':-1,
         },
 
+        #Species log-body size (trait used below to parametrize all interactions, trophic and nontrophic)
         'size': {
             'range': (0, 100),
             'distribution': 'uniform',
@@ -39,9 +38,6 @@ class LandscapeModel():
         'envniche_pos':{
             'range':(20,80),
             'distribution':'uniform',
-            # 'mean': 50., 'std': 15,
-            # 'distribution': 'normal',
-
         },
             #Width
         'envniche_width':{
@@ -54,17 +50,17 @@ class LandscapeModel():
             'mean':0.5,
             'efficiency':0.9,
             'distance':.5,
-            'range':.5,
-            'rangetype':'fraction',
+            'width':.5,
+            'rangeexp':1, #Exponent for how eating range (size range of edible prey) changes with trait value
             'multiscale':0, #Switch ON/OFF multiscale
-            'traitexp': 1,
+            'traitexp': 1, #Exponent for how spatial range of interaction changes with trait value
         },
 
         #Dispersal
         'dispersal':{
             'mean':0.01,
             'multiscale':0,  #Switch ON/OFF multiscale
-            'traitexp': 1,
+            'traitexp': 1, #Exponent for how spatial range of interaction changes with trait value
 
         },
 
@@ -72,44 +68,42 @@ class LandscapeModel():
         'competition': {
             'mean': 0.1,
             'multiscale': 0, #Switch ON/OFF multiscale
-            'traitexp':1,
-        }
+            'traitexp':1, #Exponent for how spatial range of interaction changes with trait value
+        },
+
+        #Mortality
+        'mortality': {
+            'distribution': 'uniform',
+            'range': (0.001, 0.01),
+        },
 
     }
 
 
     def __init__(self,**kwargs):
+        """When the model object is created, store passed information."""
         self.data=deepcopy(kwargs.pop('data',{}))
         self.results=deepcopy(kwargs.pop('results',{}))
         self.prm=deepcopy(kwargs.pop('parameters',LandscapeModel.dft_prm))
         self.set_params(**kwargs)
 
 
-    def save(self,path,overwrite=0):
+    def save(self,path):
+        """Save model parameters in prm.dat, dynamical variables in results.npz and other matrices in data.npz"""
         fpath=Path(path)
+        fpath.mkdir()
         dumps(open(fpath+'prm.dat','w'),self.prm)
-        rpath = fpath + Path('results')
-        rpath.mkdir()
-        for name in self.results:
-            np.save(rpath+name,self.results[name])
-        rpath = fpath + Path('data')
-        rpath.mkdir()
-        for name in self.data:
-            np.save(rpath+name,self.data[name])
+        np.savez(fpath+'results',**self.results)
+        np.savez(fpath+'data',**self.data)
 
 
     @classmethod
     def load(klass,path):
+        """Load variables and other parameters from save files in path."""
         fpath=Path(path)
         prm=loads(open(fpath+'prm.dat','r'))
-        results={}
-        rpath=fpath+Path('results')
-        for i in os.listdir(rpath):
-            results[i.split('.')[0]]=np.load(rpath+i)
-        data={}
-        rpath=fpath+Path('data')
-        for i in os.listdir(rpath):
-            data[i.split('.')[0]]=np.load(rpath+i)
+        results=dict(np.load(fpath+'results.npz'))
+        data=dict(np.load(fpath+'data.npz'))
         return klass(data=data,results=results,parameters=prm)
 
     def set_params(self,**kwargs):
@@ -140,6 +134,7 @@ class LandscapeModel():
         return self.prm
 
     def generate(self):
+        """Generate all the matrices based on parameters self.prm."""
         prm=self.prm
         data=self.data
         N=prm['species']
@@ -150,6 +145,7 @@ class LandscapeModel():
             dprm=prm[name]
             if not isinstance(dprm,dict) or not 'distribution' in dprm:
                 continue
+
             if 'shape' in dprm:
                 shape=dprm['shape']
             else:
@@ -164,63 +160,46 @@ class LandscapeModel():
             elif dist=='normal':
                 res=np.random.normal(dprm['mean'],dprm['std'],shape )
             elif dist=='noise':
-                samples=dprm.get('samples',500)
-                dimres=[]
-                if 1:
-                    res=np.random.random(shape)
-                    res=ndimage.gaussian_filter(res, sigma=5)
-                    # res+=ndimage.gaussian_filter(res, sigma=80)#*np.max(res)
-
-                elif 1:
-                    for dim in range(len(shape)):
-                        freqs = np.logspace(0, np.log(shape[dim]/100.), samples)
-                        amps = freqs ** dprm.get('spectralexp', 0)
-                        phase=np.random.random(samples)
-                        xs=np.zeros(shape)
-                        dx=np.linspace(0,1,shape[dim]).reshape( [1 for z in range(0,dim)]+[shape[dim]]+[1 for z in range(dim+1,len(shape))]  )
-                        ps=np.multiply.outer(*[np.linspace(0,1,sh) for sh in shape] )
-                        xs=xs+dx
-                        dimres.append( (np.sum( [a*np.exp(1j* 2*np.pi*(xs*f+p*np.cos(2*np.pi*ps) ) ) for f,a,p in zip(freqs,amps,phase) ] ,axis=0 )))
-                    res=np.real(np.multiply(*dimres))
-
-                else:
-                    freqs = np.logspace(0, 2, samples)
-                    amps = freqs ** dprm.get('spectralexp', 0)
-                    phase = np.random.random( (samples,len(shape)) )
-                    xs =[  np.zeros(shape)+ np.linspace(0,1,sh).reshape( [1 for z in range(0,dim)]+[sh]+[1 for z in range(dim+1,len(shape))]  ) for dim,sh in enumerate(shape)]
-                    res=np.real(np.sum( [a*np.exp(1j* 2*np.pi*np.add(*[x*f+pp for x,pp in zip(xs,p) ] ) ) for f,a,p in zip(freqs,amps,phase) ] ,axis=0))
-
+                # Generate noisy landscape
+                res=generate_noise(shape=shape,**{i:j for i,j in dprm.items() if i!='shape'} )
                 rge=dprm['range']
-                res=rge[0]+res*(rge[1]-rge[0])/(np.max(res)/np.min(res))
+                res=rge[0]+res*(rge[1]-rge[0])/(np.max(res)/np.min(res)) #Rescale generated noise
 
             if dprm.get('type','constant')=='variable':
+                # Store variables in self.results
                 self.results[name]=np.array([res])
             else:
                 data[name]=res
-        data['size']=np.sort(data['size'])
+        data['size']=np.sort(data['size']) #Order species by size (for convenience of plotting)
 
-        trait=data['size']
 
         #=== Generate the energy structure (growth and trophic) ===
-        niche=trait
-        arg = np.argsort(niche)
-        dist=np.add.outer(-niche,niche).astype('float')
-        mat=np.ones((N,N) )
-        dprm=prm['trophic']
-        rang,sd=dprm.get('distance',1),dprm.get('range')
-        if dprm.get('rangetype','fraction')=='fraction':
-            oldrang=rang
-            rang= rang*niche.reshape( niche.shape+(1,) )/2.
-            sd=sd*rang/oldrang+np.min(np.abs(dist),axis=1)
 
-        mat[dist > -rang + sd] = 0
-        mat[dist<-rang-sd ]=0
+        # Generate trophic interactions with a niche model, using species body size as niche
+        # Each predator is assigned an "eating range" (range of sizes it can eat) based on its own size
+        trait=data['size']
+        dprm=prm['trophic']
+        dist=np.add.outer(-trait,trait).astype('float') # Body size difference between predator and prey
+        mat=np.ones((N,N) )
+
+        # Get center and width of eating range
+        center,width=dprm.get('distance',1),dprm.get('range')
+        if dprm.get('rangeexp',0)!=0:
+            oldcenter=center
+            center= center*trait**rangeexp.reshape( trait.shape+(1,) )
+            width=width*center/oldcenter+np.min(np.abs(dist),axis=1)
+
+        # Set interactions to zero if the prey does not fall in the eating range
+        mat[dist > -center + width] = 0
+        mat[dist<-center-width ]=0
         np.fill_diagonal(mat,0)
         data['trophic']=mat
+
+        # Add heterotrophic growth only to basal species
         growth=np.zeros(N)
-        growth[np.sum(mat,axis=1)<1 ]=1
-        growth[niche==np.min(niche)]=1
-        data['trophic_range']=trait**prm['trophic']['traitexp']
+        growth[np.sum(mat,axis=1)<1 ]=1  #Species with no preys are heterotrophs
+        growth[trait==np.min(trait)]=1  #The smallest species is also a heterotroph
+        data['trophic_range']=trait**prm['trophic']['traitexp'] #Spatial range scales with trait
 
         #=== Generate dispersal
         data['dispersal']=trait**prm['dispersal']['traitexp']
@@ -234,21 +213,18 @@ class LandscapeModel():
         pos,wid,mortality=data['envniche_pos'],data['envniche_width'],data['mortality']
         pos,wid,growth,mortality= [z.reshape(z.shape+tuple(1 for i in range(len(env.shape))) ) for z in (pos,wid,growth,mortality) ]
 
+        #Fitness with respect to abiotic environment, between 0 and 1, controls both growth and mortality
         abioticfit=np.exp(-(pos-env.reshape((1,)+env.shape))**2 /(2*wid**2)  )
         data['growth']=growth*abioticfit
         data['mortality']=mortality*(1-abioticfit)
 
-        if 0:
-            res=abioticfit[np.argmin(arg)]
-            plt.imshow(res)
-            plt.colorbar()
-            plt.figure()
-            plt.plot(fft.rfftfreq(len(res[0])), np.abs(fft.rfft(res[0])))
-            plt.yscale('log')
-            plt.xscale('log')
-            plt.show()
-
     def get_dx(self,t,x,calc_fluxes=False):
+        """Get time derivatives (used in differential equation solver below)
+
+        Options:
+            calc_fluxes: If True, do not only return the total derivative, but also the individual contribution
+                of each term in the equation (dispersal, interactions...) to see which ones control the dynamics."""
+
         dx=np.zeros(x.shape)
 
 
@@ -258,10 +234,7 @@ class LandscapeModel():
 
         data=self.data
         prm=self.prm
-        mortality=data['mortality']
-        growth=data['growth']
-        inter=data['trophic']
-        disp=data['dispersal']
+        mortality,growth,inter,disp=data['mortality'],data['growth'],data['trophic'],data['dispersal']
         N=prm['species']
         death=prm.get('death',10**-15)
         dead=np.where(x<death)
@@ -349,11 +322,15 @@ class LandscapeModel():
         return 1
 
 
+
 class Looper(object):
+    """Allows to recursively loop over parameter range, running a Model then saving results in a tree of folders."""
+
     def __init__(self,Model):
         self.Model=Model
 
     def loop_core(self,tsample=50.,tmax=None, path='.',**kwargs):
+        """Main function (internal use)."""
         import pandas as pd
         path=Path(path)
         path.norm()
@@ -379,7 +356,7 @@ class Looper(object):
         # dic.update(model.export_params())
 
         if 'replicas' in kwargs:
-            '''Multiprocessing test'''
+            '''Parallel processing'''
             from multiprocessing import Pool,freeze_support
             freeze_support()
             systems=range(kwargs['replicas'])
@@ -415,7 +392,8 @@ class Looper(object):
         return table
 
     def loop(self,axes=None,path='.',*args,**kwargs):
-        '''External loop function'''
+        """External loop function: give it a list of parameters and parameter values to iterate over as "axes",
+        and a path to save the results in. """
         respath=Path(path)
 
         if axes is None or len(axes)==0:

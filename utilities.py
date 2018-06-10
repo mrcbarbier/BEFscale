@@ -4,6 +4,7 @@ from copy import deepcopy
 
 
 def code_debugger(skip=0):
+    """Utility: """
     import code
     import inspect
     stack=inspect.stack()
@@ -12,10 +13,45 @@ def code_debugger(skip=0):
     dic.update(stack[1+skip][0].f_locals)
     code.interact(local=dic)
 
+def generate_noise(shape,method='filter', **dprm):
+    """Generate noisy landscape (experimental, for now only method=filter works convincingly"""
+    samples = dprm.get('samples', 500)
+    dimres = []
+    if method=='filter':
+        res = np.random.random(shape)
+        res = ndimage.gaussian_filter(res, sigma=5)
+        # res+=ndimage.gaussian_filter(res, sigma=80)#*np.max(res)
+    elif method=='direct':
+        for dim in range(len(shape)):
+            freqs = np.logspace(0, np.log(shape[dim] / 100.), samples)
+            amps = freqs ** dprm.get('spectralexp', 0)
+            phase = np.random.random(samples)
+            xs = np.zeros(shape)
+            dx = np.linspace(0, 1, shape[dim]).reshape(
+                [1 for z in range(0, dim)] + [shape[dim]] + [1 for z in range(dim + 1, len(shape))])
+            ps = np.multiply.outer(*[np.linspace(0, 1, sh) for sh in shape])
+            xs = xs + dx
+            dimres.append((np.sum([a * np.exp(1j * 2 * np.pi * (xs * f + p * np.cos(2 * np.pi * ps))) for f, a, p in
+                                   zip(freqs, amps, phase)], axis=0)))
+        res = np.real(np.multiply(*dimres))
+
+    else:
+        freqs = np.logspace(0, 2, samples)
+        amps = freqs ** dprm.get('spectralexp', 0)
+        phase = np.random.random((samples, len(shape)))
+        xs = [np.zeros(shape) + np.linspace(0, 1, sh).reshape(
+            [1 for z in range(0, dim)] + [sh] + [1 for z in range(dim + 1, len(shape))]) for dim, sh in
+              enumerate(shape)]
+        res = np.real(np.sum([a * np.exp(1j * 2 * np.pi * np.add(*[x * f + pp for x, pp in zip(xs, p)])) for f, a, p in
+                              zip(freqs, amps, phase)], axis=0))
+    return res
+
 def dumps(fil,obj):
+    """Write object to file"""
     fil.write(str(obj))
 
 def loads(fil):
+    """Load object from file"""
     txt=''
     for l in fil:
         txt+=l.strip()
@@ -23,6 +59,7 @@ def loads(fil):
 
 
 def rebuild_filelist(path,verbose=True):
+    """Run through directory tree to look for model results to add to files.csv"""
     if verbose:
         print 'Rebuilding files.csv for {}'.format(path)
     final=None
@@ -115,6 +152,7 @@ class Path(str):
 
 
 def auto_subplot(panel,nbpanels,rows=None,projection=None,return_all=0):
+    """Helps deal with pyplot's subplots, automatically incrementing panel index."""
     i=panel
     if rows is None:
         panels_per_row=np.ceil(np.sqrt(nbpanels) )
