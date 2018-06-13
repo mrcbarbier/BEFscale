@@ -233,7 +233,7 @@ class LandscapeModel():
             dx[i]+= dxpred
             if calc_fluxes:
                 fluxes[0,i]+=np.abs(dxpred)
-                fluxes[1,prey]+=np.abs(dxprey)
+                fluxes[1,prey]+=-np.abs(dxprey)
         #Competition
         comp=data['competition']
         xc = x
@@ -246,8 +246,8 @@ class LandscapeModel():
 
         dx[dead]=np.clip(dx[dead],0,None)
         if calc_fluxes:
-            fluxes[3]+=np.abs(dxcomp)
-            fluxes[4]+=np.abs(dxlin)
+            fluxes[3]+=-np.abs(dxcomp)
+            fluxes[4]+=dxlin
             return dx,typfluxes,fluxes
         return dx
 

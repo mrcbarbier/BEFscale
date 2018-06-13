@@ -43,8 +43,8 @@ if __name__=='__main__':
     save= 1 #Save plots (0=show them in windows)
 
     multiscale=''#'all'     # Multiscale?
-    tmax=100    # Simulation length
-    tsample = 5  # Time between snapshots
+    tmax=500    # Simulation length
+    tsample = 10  # Time between snapshots
     use_Fourier=0   # Optimized code using fourier transforms
 
     # Parameters to iterate over
@@ -74,7 +74,7 @@ if __name__=='__main__':
 
     # Plots
     # Detailed plots for each simulation
-    detailed_plots(path,save=save)
+    detailed_plots(path,save=save,movie='movie' in sys.argv)
 
     # Summary plots for BEF over parameter values
     summary_plots(path,axes=axes,save=save)
