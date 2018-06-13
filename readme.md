@@ -35,5 +35,6 @@ Simulation experiments for multi-scale ecological interactions.
 
 ## Where to edit:
 
-   Parameters and values to iterate over in axes: landscapesimu.py
+   Default parameter values:  default_parameters.dat
+   Parameter values that are iterated over:  loop_parameters.dat
    Plots: plots.py
