@@ -40,16 +40,15 @@ if __name__=='__main__':
 
 
     path = Path('RESULTS/beflandscape')     # Folder containing simulations
-    rebuild_filelist(path)
+    save= 1 #Save plots (0=show them in windows)
+
     multiscale=''#'all'     # Multiscale?
-    tmax,tsample=50, 1    # Simulation length
+    tmax=100    # Simulation length
+    tsample = 5  # Time between snapshots
     use_Fourier=0   # Optimized code using fourier transforms
 
     # Parameters to iterate over
-    axes = [
-        ('dispersal_mean',[0.01,1.]),
-        ('sys', [0])
-    ]
+    axes= eval('\n'.join(line for line in open('loop_parameters.dat')) ,{},{})
 
     # Get options from command line
     for i in sys.argv:
@@ -66,6 +65,8 @@ if __name__=='__main__':
             tsample=ast.literal_eval(i.split('=')[-1])
         if 'FT=' in i :
             use_Fourier=ast.literal_eval(i.split('=')[-1])
+        if 'save=' in i:
+            save=i.split('=')[-1]
 
     # Loop over parameters given in axes
     # 'sys' is a dummy parameter standing in for replicas
@@ -73,7 +74,7 @@ if __name__=='__main__':
 
     # Plots
     # Detailed plots for each simulation
-    detailed_plots(path)
+    detailed_plots(path,save=save)
 
     # Summary plots for BEF over parameter values
-    summary_plots(path,axes=axes)
+    summary_plots(path,axes=axes,save=save)

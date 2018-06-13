@@ -1,0 +1,82 @@
+   {
+        'species':30,
+        'death':10**-4, #Extinction threshold (= 1 individual)
+
+        #Landscape size -- Keep multiples of 2 for FFT
+        'landx':128,
+        'landy':128,
+
+        #Abundance of each species at each pixel
+        'n': {
+            'type':'variable',
+            'shape': ('species','landx','landy'),
+            'range': (0., 1.),
+            'distribution': 'uniform',
+        },
+
+        #Value of the environment at each pixel
+        'environment':{
+            'shape':('landx','landy'),
+            'range':(0.,100.),
+            'distribution':'noise',
+            'spectralexp':-1,
+        },
+
+        #Species log-body size (trait used below to parametrize all interactions, trophic and nontrophic)
+        'size': {
+            'range': (0, 100),
+            'distribution': 'uniform',
+        },
+
+        #Environmental niche
+            #Center
+        'envniche_pos':{
+            'range':(20,80),
+            'distribution':'uniform',
+        },
+            #Width
+        'envniche_width':{
+            'mean':20., 'std':5,
+            'distribution':'normal',
+        },
+
+        #Trophic interactions
+        'trophic':{
+            #Coefficient values
+            'mean':1., 'std':0.1,
+            'distribution':'normal',
+            'shape':('species','species'),
+            'efficiency':0.9,
+
+            #Eating range
+            'distance':.25, #Distance of center of eating range to predator trait
+            'width':.25, #Width of eating range (if < distance, predator cannot eat equal size)
+            'range_exp':1, #Exponent for how eating range (size range of edible prey) changes with trait value
+
+            #Spatial scaling
+            'multiscale':0, #Switch ON/OFF multiscale
+            'trait_exp': 1, #Exponent for how spatial range of interaction changes with trait value
+        },
+
+        #Dispersal
+        'dispersal':{
+            'mean':0.01,
+            'multiscale':0,  #Switch ON/OFF multiscale
+            'trait_exp': 1, #Exponent for how spatial range of interaction changes with trait value
+
+        },
+
+        #Competition
+        'competition': {
+            'mean': 0.1,
+            'multiscale': 0, #Switch ON/OFF multiscale
+            'trait_exp':1, #Exponent for how spatial range of interaction changes with trait value
+        },
+
+        #Mortality
+        'mortality': {
+            'distribution': 'uniform',
+            'range': (0.001, 0.01),
+        },
+
+    }

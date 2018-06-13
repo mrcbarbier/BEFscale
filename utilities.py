@@ -83,7 +83,7 @@ def rebuild_filelist(path,verbose=True):
                 final=pd.read_csv(Path(root)+'files.csv',index_col=0)
             else:
                 final=final.append(pd.read_csv(Path(root)+'files.csv',index_col=0),ignore_index=1)
-            final.set_value(final.index[-1],'path',str(Path(root).osnorm()))
+            final.loc[final.index[-1],'path']=str(Path(root).osnorm())
 
     if not final is None:
         final.to_csv(path+'files.csv')

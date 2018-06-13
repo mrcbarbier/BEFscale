@@ -18,6 +18,10 @@ Simulation experiments for multi-scale ecological interactions.
 
     python landscapesimu.py path=xxx
 
+ *Rerun simulations instead of opening saved results*
+
+    python landscapesimu.py rerun
+
  *Run with/out multiscale interactions (without is faster, useful for tests)* (NB: brackets = optional/alternative)
 
     python landscapesimu.py [multiscale=0]  # (None)

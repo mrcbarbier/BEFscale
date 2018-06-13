@@ -10,87 +10,7 @@ class LandscapeModel():
     """Main Model object: given parameters, will generate matrices, run dynamics, load and save."""
 
     #Default parameters
-    dft_prm={
-        'species':30,
-
-        #Landscape size -- Keep multiples of 2 for FFT
-        'landx':128,
-        'landy':128,
-
-        #Abundance of each species at each pixel
-        'n': {
-            'type':'variable',
-            'shape': ('species','landx','landy'),
-            'range': (0., 1.),
-            'distribution': 'uniform',
-        },
-
-        #Value of the environment at each pixel
-        'environment':{
-            'shape':('landx','landy'),
-            'range':(0.,100.),
-            'distribution':'noise',
-            'spectralexp':-1,
-        },
-
-        #Species log-body size (trait used below to parametrize all interactions, trophic and nontrophic)
-        'size': {
-            'range': (0, 100),
-            'distribution': 'uniform',
-        },
-
-        #Environmental niche
-            #Center
-        'envniche_pos':{
-            'range':(20,80),
-            'distribution':'uniform',
-        },
-            #Width
-        'envniche_width':{
-            'mean':20., 'std':5,
-            'distribution':'normal',
-        },
-
-        #Trophic interactions
-        'trophic':{
-            #Coefficient values
-            'mean':1., 'std':0.1,
-            'distribution':'normal',
-            'shape':('species','species'),
-            'efficiency':0.9,
-
-            #Eating range
-            'distance':.25, #Distance of center of eating range to predator trait
-            'width':.25, #Width of eating range (if < distance, predator cannot eat equal size)
-            'range_exp':1, #Exponent for how eating range (size range of edible prey) changes with trait value
-
-            #Spatial scaling
-            'multiscale':0, #Switch ON/OFF multiscale
-            'trait_exp': 1, #Exponent for how spatial range of interaction changes with trait value
-        },
-
-        #Dispersal
-        'dispersal':{
-            'mean':0.01,
-            'multiscale':0,  #Switch ON/OFF multiscale
-            'trait_exp': 1, #Exponent for how spatial range of interaction changes with trait value
-
-        },
-
-        #Competition
-        'competition': {
-            'mean': 0.1,
-            'multiscale': 0, #Switch ON/OFF multiscale
-            'trait_exp':1, #Exponent for how spatial range of interaction changes with trait value
-        },
-
-        #Mortality
-        'mortality': {
-            'distribution': 'uniform',
-            'range': (0.001, 0.01),
-        },
-
-    }
+    dft_prm=eval('\n'.join(line for line in open('default_parameters.dat')) ,{},{})
 
 
     def __init__(self,**kwargs):
@@ -195,7 +115,7 @@ class LandscapeModel():
                 # Generate noisy landscape
                 res=generate_noise(shape=shape,**{i:j for i,j in dprm.items() if i!='shape'} )
                 rge=dprm['range']
-                res=rge[0]+res*(rge[1]-rge[0])/(np.max(res)/np.min(res)) #Rescale generated noise
+                res=rge[0]+(res-np.min(res))*(rge[1]-rge[0])/(np.max(res)-np.min(res)) #Rescale generated noise
 
             if dprm.get('type','constant')=='variable':
                 # Store variables in self.results
@@ -332,9 +252,10 @@ class LandscapeModel():
         return dx
 
     def get_lorentzian(self,a,x):
+        # return np.ones(x.shape)
         return 2*a/(a**2+x**2)
 
-    def get_dx_FT(self, t, x, calc_fluxes=0):
+    def get_dx_FT(self, t, x, calc_fluxes=0,resconv=1):
         """Get time derivatives in Fourier space (used in differential equation solver below) """
         dx = np.zeros(x.shape,dtype='complex')
         dxdisp = np.zeros(x.shape,dtype='complex')
@@ -374,16 +295,24 @@ class LandscapeModel():
         dxcomp = np.tensordot(comp, x*[ self.get_lorentzian(self.data['competition_range'][i],k) for i in range(N)], axes=(1, 0))
         dxlin = growth - mortality
         dx += dxlin - dxcomp
+        code_debugger()
 
         if calc_fluxes:
             fluxes[3] += np.abs(dxcomp)
             fluxes[4] += np.abs(dxlin)
             return dx, typfluxes, fluxes
-        return np.array([ssignal.fftconvolve(x[i], dx[i],'same') for i in range(N)]) + dxdisp
+
+        def window(z):
+            if resconv is None:
+                return z
+            lx,ly=z.shape
+            cx,cy=lx/2+1,ly/2+1
+            return z[max(cx-resconv,0):cx+resconv, max(cy-resconv,0):cy+resconv]
+        return np.array([ssignal.fftconvolve( dx[i],window(x[i]),'same') for i in range(N)]) + dxdisp
 
 
     def prep_FT(self,x,**kwargs):
-        """Prepare data for Fourier Transformed dynamical equations (if used)"""
+        """Prepare data for Fourier-transformed dynamical equations (if used)"""
 
         use_Fourier = kwargs.get('use_Fourier',1)
         if not use_Fourier:
@@ -391,20 +320,57 @@ class LandscapeModel():
         data_FT={}
         data=self.data
         landscape=data['environment']
-        for i in ('mortality','growth','trophic','competition','dispersal'):
-            if i in data and data[i].shape[1:]==landscape.shape:
-                data_FT[i]=fft.fft2(data[i])
-            else:
-                data_FT[i]=data[i]
         lx,ly=landscape.shape
         kx,ky=fft.fftfreq(lx), fft.fftfreq(ly)
+        for i in ('mortality','growth','trophic','competition','dispersal'):
+            if i in data and data[i].shape[1:]==landscape.shape:
+                data_FT[i]= self.reorder_FT( fft.fft2(data[i]), (kx,ky))
+                assert self.checkpos_FT(data_FT[i])<10**-10
+            else:
+                data_FT[i]=data[i]
         if use_Fourier=='reduced':
             kx=kx[:lx/2]
             ky=ky[:ly/2]
+        data_FT['kxFourier'],data_FT['kyFourier']= kx,ky
         data_FT['kFourier']= np.abs(np.multiply.outer( kx,ky ))**0.5
         self.data_FT=data_FT
-        x=fft.fft2(x/np.sum(x))
-        return x
+        x2=fft.fft2(x)
+        x2= self.reorder_FT(x2,(kx,ky))
+        assert self.checkpos_FT(x2) <10**-10
+        return x2
+
+    def reorder_FT(self,x,k=None):
+        """Fourier transforms are typically in order [0..k(N-1),-k(N)...-k(1)].
+        This reorders them to [-k(N)..k(N-1)] or back."""
+        if k is None:
+            lx, ly = x.shape[-2:]
+            kx,ky=fft.fftfreq(lx), fft.fftfreq(ly)
+        else:
+            kx,ky=k
+        x2=x[np.ix_(*[range(z) for z in x.shape[:-2]]+[ np.argsort(kx),np.argsort(ky) ])]
+        return x2
+
+    def checkpos_FT(self,x):
+        """Checks positivity of first element of x, by looking at conjugate symmetry of Fourier Transform."""
+        t=x
+        while len(t.shape)>2:
+            t=t[0]
+        lx,ly=t.shape
+        check=np.max(np.abs(t[lx / 2:,1: ] - np.conj(t[1:lx / 2 + 1,1:][::-1, ::-1])))
+         #np.max(np.abs(t[lx / 2:, ly / 2:] - np.conj(t[1:lx / 2 + 1, 1:ly / 2 + 1][::-1, ::-1])))
+        # code_debugger()
+        return check
+
+    def setpos_FT(self,x):
+        """Enforce positivity of x by symmetry of its Fourier transform."""
+        lx,ly=x.shape[-2:]
+        x2=x.copy()
+        x2[:,lx / 2+1:,1:]=np.conj(x2[:,1:lx / 2 ,1:][:,::-1, ::-1])
+        x2[:,lx / 2,ly / 2+1:]=np.conj(x2[:,lx / 2,1:ly / 2][:,::-1] )
+        x2[:,lx/2,ly/2]=x2[:,lx/2,ly/2].real
+        if self.checkpos_FT(x2)>0.0001:
+            code_debugger()
+        return x2
 
     def evol(self,tmax=5,tsample=.1,dt=.1,keep='all',print_msg=1,**kwargs):
         """Time evolution of the model"""
@@ -420,13 +386,17 @@ class LandscapeModel():
         use_Fourier = kwargs.get('use_Fourier', 0)
         if use_Fourier:
             x=self.prep_FT(x,**kwargs)
+            lx,ly=x.shape[-2:]
+            cx,cy=lx/2,ly/2
 
         t=0
         while t<tmax:
 
             if  use_Fourier:
                 dx=self.get_dx_FT(t,x)
-                x*=(1+dt*dx)
+                print np.max(x),np.max(dx),self.checkpos_FT(x), self.checkpos_FT(dx)
+                x=self.setpos_FT(x+dt*dx)
+                x[:,cx,cy]=np.clip(x[:,cx,cy],0,None)
             else:
                 dx=self.get_dx(t,x)
                 x*=(1+np.clip(dt* dx,-.999,None))
@@ -438,6 +408,7 @@ class LandscapeModel():
                     print('Time {}'.format(t) )
                 if keep=='all' or t+dt>tmax:
                     if use_Fourier:
+                        kx, ky=data_FT['kxFourier'], data_FT['kyFourier']
                         if use_Fourier=='reduced':
                             lx,ly=landscape.shape
                             x2=np.zeros(x.shape)
@@ -445,14 +416,12 @@ class LandscapeModel():
                             x2[lx/2:,:ly/2]-np.conj(x)
                             x2[:lx/2,ly/2:]-np.conj(x)
                             x2[lx/2:,ly/2:]=x
-                            x2[np.logical_and(kx>=0,ky>=0)]=x
-                            x2[np.logical_and(kx<=0,ky>=0)]=-np.conj(x)
-                            x2[ky<0]+=-np.conj(x2[:,::-1])[ky<0]
                         else:
                             x2=x
-                        realx=fft.ifft2(x2).real
+                        realx=fft.ifft2(self.reorder_FT(x2,(kx,ky))).real
                     else:
                         realx=x
+                    realx[realx<=death]=0
                     self.results['n']=np.concatenate([self.results['n'],[realx]])
 
         return 1
