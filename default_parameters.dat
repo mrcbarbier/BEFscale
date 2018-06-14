@@ -1,6 +1,6 @@
    {
         'species':30,
-        'death':10**-4, #Extinction threshold (= 1 individual)
+        'death':10**-3, #Extinction threshold (= 1 individual)
 
         #Landscape size -- Keep multiples of 2 for FFT
         'landx':128,
@@ -19,7 +19,9 @@
             'shape':('landx','landy'),
             'range':(0.,100.),
             'distribution':'noise',
-            'spectralexp':-1,
+            'method':'fft',
+            'color':1, #Color of noise (spectral exponent)
+            'cutoff':.05, #Exponential cutoff on spectrum
         },
 
         #Species log-body size (trait used below to parametrize all interactions, trophic and nontrophic)
@@ -62,7 +64,7 @@
         'dispersal':{
             'mean':0.01,
             'multiscale':0,  #Switch ON/OFF multiscale
-            'trait_exp': 1, #Exponent for how spatial range of interaction changes with trait value
+            'trait_exp': 0, #Exponent for how spatial range of interaction changes with trait value
 
         },
 

@@ -42,9 +42,13 @@ class LandscapeModel():
         results=dict(np.load(fpath+'results.npz'))
         return cls(data=data,results=results,parameters=prm)
 
-    def set_params(self,**kwargs):
+    def set_params(self,regen=0,test=0,**kwargs):
         """If some parameter 'name' in the template 'label' is changed by
-        external arguments to the model of the form 'label_name', update it."""
+        external arguments to the model of the form 'label_name', update it.
+        If regen, then generate any matrix for which parameters havechanged
+        In test mode, simply return which parameters would be changed by each kwarg."""
+        if test or regen:
+            changes={}
         for i,j in kwargs.iteritems():
             if i in self.dft_prm:
                 self.prm.setdefault(i,{})
@@ -55,8 +59,10 @@ class LandscapeModel():
                 part=i.split('_')
                 dico=self.prm
                 p=part.pop(0)
+                path=[]
                 while part:
                     if p in dico:
+                        path.append(p)
                         dico=dico[p]
                         p=part.pop(0)
                     else:
@@ -64,9 +70,17 @@ class LandscapeModel():
                 if p in dico or kwargs.get('force',1) and p!=i:
                     if not p in dico:
                         print('set_params forcing:',i,p,j)
-                    dico[p]=j
+                    if not test:
+                        dico[p]=j
+                    if test or regen:
+                        changes[i]=path
             except TypeError:
                 pass
+        if test:
+            return changes
+        if regen:
+            #Only recreate whatever is changed by the imposed parameters
+            self.generate([i[0] for i in changes.values() ] )
         return self.prm
 
 
@@ -85,15 +99,25 @@ class LandscapeModel():
             recurs(label,self.prm[label])
         return final
 
-    def generate(self):
-        """Generate all the model coefficients based on parameters in self.prm."""
-        prm=self.prm
-        data=self.data
-        N=prm['species']
 
-        #=== Generate random distributions ===
+
+    def generate(self,labels=None):
+        """Generate all the model coefficients based on parameters in self.prm. If labels, generate only those coefficients."""
+        prm=self.prm
+        N=prm['species']
+        data=self.data
+
+        def keep(name):
+            # Must keep existing data with this name
+            if labels is None:
+                return 0
+            if  name in labels:
+                return 0
+            return 1
 
         for name in prm:
+            if keep(name):
+                continue
             dprm=prm[name]
             if not isinstance(dprm,dict) or not 'distribution' in dprm:
                 continue
@@ -122,47 +146,58 @@ class LandscapeModel():
                 self.results[name]=np.array([res])
             else:
                 data[name]=res
-        data['size']=np.sort(data['size']) #Order species by size (for convenience of plotting)
 
+            if name=='size':
+                data['size']=np.sort(data['size']) #Order species by size (for convenience of plotting)
+
+        trait=data['size']
 
         #=== Generate the energy structure (growth and trophic) ===
 
         # Generate trophic interactions with a niche model, using species body size as niche
         # Each predator is assigned an "eating range" (range of sizes it can eat) based on its own size
-        trait=data['size']
-        dprm=prm['trophic']
-        dist=np.add.outer(-trait,trait).astype('float') # Body size difference between predator and prey
-        if 'trophic' in data:
-            mat=data['trophic']
-        else:
-            mat=np.ones((N,N) )
 
-        # Get center and width of eating range
-        center,width=dprm.get('distance',1),dprm.get('width',1)
-        range_exp=dprm.get('range_exp',0)
-        if not range_exp is 0:
-            oldcenter=center
-            center= center*(trait**range_exp).reshape( trait.shape+(1,) )
-            width=width*center/oldcenter+np.min(np.abs(dist),axis=1)
+        growth = np.zeros(N)
+        if not keep('trophic') or not keep('growth'):
+            dprm = prm['trophic']
+            dist = np.add.outer(-trait, trait).astype('float')  # Body size difference between predator and prey
+            if 'trophic' in data:
+                mat=data['trophic']
+            else:
+                mat=np.ones((N,N) )
 
-        # Set interactions to zero if the prey does not fall in the eating range
-        mat[dist > -center + width] = 0
-        mat[dist<-center-width ]=0
-        np.fill_diagonal(mat,0)
-        data['trophic']=mat
+            if not keep('trophic'):
+                # Get center and width of eating range
+                center,width=dprm.get('distance',1),dprm.get('width',1)
+                range_exp=dprm.get('range_exp',0)
+                if not range_exp is 0:
+                    oldcenter=center
+                    center= center*(trait**range_exp).reshape( trait.shape+(1,) )
+                    width=width*center/oldcenter+np.min(np.abs(dist),axis=1)
 
-        # Add heterotrophic growth only to basal species
-        growth=np.zeros(N)
-        growth[np.sum(mat,axis=1)<1 ]=1  #Species with no preys are heterotrophs
-        growth[trait==np.min(trait)]=1  #The smallest species is also a heterotroph
-        data['trophic_range']=trait**prm['trophic']['trait_exp'] #Spatial range scales with trait
+                # Set interactions to zero if the prey does not fall in the eating range
+                mat[dist > -center + width] = 0
+                mat[dist<-center-width ]=0
+                np.fill_diagonal(mat,0)
+                data['trophic']=mat
+
+            # Add autotrophic growth only to basal species
+            growth[np.sum(mat,axis=1)<1 ]=1  #Species with no preys are autotrophs
+            growth[trait==np.min(trait)]=1  #The smallest species is always an autotroph
+
+        if not keep('trophic_range'):
+            data['trophic_range']=trait**prm['trophic']['trait_exp'] #Spatial range scales with trait
 
         #=== Generate dispersal
-        data['dispersal']=trait**prm['dispersal']['trait_exp']
+        if not keep('dispersal'):
+            data['dispersal']=prm['dispersal']['mean']*trait**prm['dispersal']['trait_exp']
 
         #=== Generate competition
-        data['competition_range']=trait**prm['dispersal']['trait_exp']
-        data['competition']=np.eye(N)
+        if not keep('competition_range'):
+            data['competition_range']=trait**prm['competition']['trait_exp']
+        if not keep('competition'):
+            #For now, only self-competition
+            data['competition']=np.eye(N)
 
         #=== Generate growth and mortality
         env=data['environment']
@@ -171,12 +206,14 @@ class LandscapeModel():
 
         #Fitness with respect to abiotic environment, between 0 and 1, controls both growth and mortality
         abioticfit=np.exp(-(pos-env.reshape((1,)+env.shape))**2 /(2*wid**2)  )
-        data['growth']=growth*abioticfit
-        data['mortality']=mortality*(1-abioticfit)
+        if not keep('growth'):
+            data['growth']=growth*abioticfit
+        if not keep('mortality'):
+            data['mortality']=mortality*(1-abioticfit)
 
 
 
-    def get_dx(self,t,x,calc_fluxes=False):
+    def get_dlogx(self,t,x,calc_fluxes=False):
         """Get time derivatives (used in differential equation solver below)
 
         Options:
@@ -324,42 +361,21 @@ class LandscapeModel():
         kx,ky=fft.fftfreq(lx), fft.fftfreq(ly)
         for i in ('mortality','growth','trophic','competition','dispersal'):
             if i in data and data[i].shape[1:]==landscape.shape:
-                data_FT[i]= self.reorder_FT( fft.fft2(data[i]), (kx,ky))
-                assert self.checkpos_FT(data_FT[i])<10**-10
+                data_FT[i]= reorder_FT( fft.fft2(data[i]), (kx,ky))
+                assert checkpos_FT(data_FT[i])<10**-10
             else:
                 data_FT[i]=data[i]
         if use_Fourier=='reduced':
             kx=kx[:lx/2]
             ky=ky[:ly/2]
         data_FT['kxFourier'],data_FT['kyFourier']= kx,ky
-        data_FT['kFourier']= np.abs(np.multiply.outer( kx,ky ))**0.5
+        data_FT['kFourier']= np.sqrt(np.add.outer(kx**2,ky**2 ))
         self.data_FT=data_FT
         x2=fft.fft2(x)
-        x2= self.reorder_FT(x2,(kx,ky))
-        assert self.checkpos_FT(x2) <10**-10
+        x2= reorder_FT(x2,(kx,ky))
+        assert checkpos_FT(x2) <10**-10
         return x2
 
-    def reorder_FT(self,x,k=None):
-        """Fourier transforms are typically in order [0..k(N-1),-k(N)...-k(1)].
-        This reorders them to [-k(N)..k(N-1)] or back."""
-        if k is None:
-            lx, ly = x.shape[-2:]
-            kx,ky=fft.fftfreq(lx), fft.fftfreq(ly)
-        else:
-            kx,ky=k
-        x2=x[np.ix_(*[range(z) for z in x.shape[:-2]]+[ np.argsort(kx),np.argsort(ky) ])]
-        return x2
-
-    def checkpos_FT(self,x):
-        """Checks positivity of first element of x, by looking at conjugate symmetry of Fourier Transform."""
-        t=x
-        while len(t.shape)>2:
-            t=t[0]
-        lx,ly=t.shape
-        check=np.max(np.abs(t[lx / 2:,1: ] - np.conj(t[1:lx / 2 + 1,1:][::-1, ::-1])))
-         #np.max(np.abs(t[lx / 2:, ly / 2:] - np.conj(t[1:lx / 2 + 1, 1:ly / 2 + 1][::-1, ::-1])))
-        # code_debugger()
-        return check
 
     def setpos_FT(self,x):
         """Enforce positivity of x by symmetry of its Fourier transform."""
@@ -368,19 +384,24 @@ class LandscapeModel():
         x2[:,lx / 2+1:,1:]=np.conj(x2[:,1:lx / 2 ,1:][:,::-1, ::-1])
         x2[:,lx / 2,ly / 2+1:]=np.conj(x2[:,lx / 2,1:ly / 2][:,::-1] )
         x2[:,lx/2,ly/2]=x2[:,lx/2,ly/2].real
-        if self.checkpos_FT(x2)>0.0001:
+        if checkpos_FT(x2)>0.0001:
             code_debugger()
         return x2
 
-    def evol(self,tmax=5,tsample=.1,dt=.1,keep='all',print_msg=1,**kwargs):
+    def evol(self,tmax=5,nsample=10,dt=.1,keep='all',print_msg=1,**kwargs):
         """Time evolution of the model"""
 
-        #Create new matrices and initial conditions
-        if kwargs.get('reseed',1):
+        if kwargs.get('reseed',1) or not self.data:
+            # Create new matrices and initial conditions
             self.generate()
+            self.results['t']=np.zeros(1)
+        elif not kwargs.get('extend',0):
+            # Only create new initial conditions
+            print "Regenerating initial conditions"
+            self.generate(self.results.keys() )
+            self.results['t']=np.zeros(1)
 
         x=self.results['n'][-1].copy()
-        totx=np.sum(x)
         death = self.prm.get('death', 10 ** -15)
 
         use_Fourier = kwargs.get('use_Fourier', 0)
@@ -390,20 +411,24 @@ class LandscapeModel():
             cx,cy=lx/2,ly/2
 
         t=0
+        tsamples=list(np.logspace(np.log10(dt),np.log10(tmax),nsample ))
         while t<tmax:
 
             if  use_Fourier:
                 dx=self.get_dx_FT(t,x)
-                print np.max(x),np.max(dx),self.checkpos_FT(x), self.checkpos_FT(dx)
+                print np.max(x),np.max(dx),checkpos_FT(x), checkpos_FT(dx)
                 x=self.setpos_FT(x+dt*dx)
                 x[:,cx,cy]=np.clip(x[:,cx,cy],0,None)
             else:
-                dx=self.get_dx(t,x)
+                dx=self.get_dlogx(t,x)
                 x*=(1+np.clip(dt* dx,-.999,None))
                 x[x<death]=0
             t+=dt
 
-            if t%tsample <dt or t+dt > tmax:
+            if  t+dt > tsamples[0]:
+                tsamp=tsamples.pop(0)
+                if not tsamples:
+                    tsamples.append(tmax)
                 if print_msg:
                     print('Time {}'.format(t) )
                 if keep=='all' or t+dt>tmax:
@@ -418,11 +443,12 @@ class LandscapeModel():
                             x2[lx/2:,ly/2:]=x
                         else:
                             x2=x
-                        realx=fft.ifft2(self.reorder_FT(x2,(kx,ky))).real
+                        realx=fft.ifft2(reorder_FT(x2,(kx,ky))).real
                     else:
                         realx=x
                     realx[realx<=death]=0
                     self.results['n']=np.concatenate([self.results['n'],[realx]])
+                    self.results['t']=np.concatenate([self.results['t'],[tsamp]])
 
         return 1
 
@@ -448,6 +474,7 @@ class Looper(object):
 
     def __init__(self,Model):
         self.Model=Model
+        self.model={}
 
     def loop_core(self,tsample=50.,tmax=None, path='.',**kwargs):
         """Main function (internal use)."""
@@ -464,18 +491,18 @@ class Looper(object):
             'sys':kwargs.get('sys',None),
             }
 
-
-        if 'model' in kwargs:
-            model=kwargs['model']
-            model.set_params(**kwargs)
+        reseed=kwargs.get('reseed',1)
+        if self.model and not reseed:
+            model=self.model[dic['sys']]
+            model.set_params(regen=1,**kwargs)
         else:
             model=self.Model(**kwargs)
         for i in kwargs:
             if i in model.export_params():
                 dic[i]=kwargs[i]
 
-        if not kwargs.get('reseed',1):
-            kwargs['model']=model #transmit the model further down the loop instead of recreating it each time
+        if not reseed:
+            self.model[dic['sys']]=model #transmit the model further down the loop instead of recreating it each time
 
         if 'replicas' in kwargs:
             '''Parallel processing'''

@@ -2,6 +2,29 @@ from landscapemodel import *
 import matplotlib.figure as mpfig
 
 
+
+
+def measures(model,dic):
+    """Measure various quantities for a given model, store summary in dictionary dic."""
+    Nf = model.results['n'][-1]
+    growth=model.data['growth']
+
+    B=np.sum(Nf,axis=0)  #Total Biomass per patch
+    basal=np.where(np.max(growth,axis=(1,2))>0 )[0] #Basal species
+    Bbasal=np.sum(Nf[basal ],axis=0)  #Total producer biomass per patch
+    prod=np.sum(growth*Nf,axis=0)  #Total production per patch
+
+    alive=(Nf > model.prm['death'])
+    n=Nf/B # Relative biomass
+    D = np.sum(alive, axis=0)  # Diversity
+    DS = -np.sum(n * np.log(np.clip(n, 10 ** -15, None)), axis=0)  # Shannon diversity
+    dic.update({ 'biomass_tot':np.sum(B),'biomass_basal':np.sum(Bbasal),
+                 'production_tot':np.sum(prod),
+                 'alpha_div':np.mean(D),'alpha_shannon':np.mean(DS),
+                 'gamma_div':np.sum(np.sum(alive,axis=(1,2))>0 ) })
+
+    return B, Bbasal, D, DS
+
 # ============= PLOTS =================
 
 def detailed_plots(path,save=0,movie=0):
@@ -28,7 +51,9 @@ def detailed_plots(path,save=0,movie=0):
 
         #Species trajectories
         figtraj=plt.figure()
-        plt.plot(np.sum(model.results['n']/death, axis=(2, 3)))
+        nsum=np.sum(model.results['n']/death, axis=(2, 3))
+        for i in zip(*nsum):
+            plt.plot(model.results['t'],i)
         plt.yscale('log')
         plt.xlabel('Time')
         plt.title('Total abundance per species')
@@ -74,7 +99,7 @@ def detailed_plots(path,save=0,movie=0):
         #Role of different interactions
         figdynamics=plt.figure(figsize=np.array(mpfig.rcParams['figure.figsize'])*(3,3) )
         panel=0
-        dx,typfluxes,fluxes=model.get_dx(None, nf, calc_fluxes=1)
+        dx,typfluxes,fluxes=model.get_dlogx(None, nf, calc_fluxes=1)
         for i in range(N):
             panel,ax=auto_subplot(panel,N)
             for t, typ in enumerate(typfluxes):
@@ -89,40 +114,40 @@ def detailed_plots(path,save=0,movie=0):
 
 
         #Biomass pyramid
-        plt.figure()
-        plt.scatter(data['size'],np.sum(nf,axis=(1,2)))
+        figpyr=plt.figure()
+        plt.scatter(data['size'],np.sum(nf/death,axis=(1,2)))
         plt.xlabel('Size')
         plt.yscale('log')
-        plt.ylabel('Biomass')
+        plt.ylabel('Abundance')
 
         #BEF
         figBEF=plt.figure()
-        B=np.sum(nf,axis=0)  #Total Biomass
-        D=np.sum(nf>death,axis=0) #Diversity
-        n=nf/B
-        DS=-np.sum(n*np.log(np.clip(n,10**-15,None) ),axis=0)  #Shannon diversity
+        summaries={}
+        B,Bbasal,D,DS=measures(model,summaries)
 
-        patches=pd.DataFrame([dict( zip(('B','n','D','DShannon'), x)  ) for x in zip(B.ravel(),n.ravel(),D.ravel(),DS.ravel()) ]  )
-        plt.subplot(121)
+        patches=pd.DataFrame([dict( zip(('B','Bbasal','D','DShannon'), x)  ) for x in zip(B.ravel(),Bbasal.ravel(),
+                                                                                          D.ravel(),DS.ravel()) ]  )
 
-        # Group by species diversity
-        patchesD=patches.groupby('D').median()
-        plt.scatter(D.ravel(),B.ravel())
-        #plt.yscale('log')
-        #plt.xscale('log')
-        plt.plot(patchesD.index,patchesD['B'],lw=2,c='k' )
-        plt.xlabel('Diversity')
-        plt.ylabel('Patch biomass')
-        plt.subplot(122)
+        panel=0
+        for name,val in [('Biomass','B'),('Basal biomass','Bbasal')]:
+            panel,ax=auto_subplot(panel,4)
+            # Group by species diversity
+            patchesD=patches.groupby('D').median()
+            plt.scatter(patches['D'],patches[val])
+            #plt.yscale('log'),plt.xscale('log')
+            plt.plot(patchesD.index,patchesD[val],lw=2,c='k' )
+            plt.xlabel('Diversity')
+            plt.ylabel(name)
+            panel,ax=auto_subplot(panel,4)
 
-        # Group by Shannon
-        bins = np.linspace(patches['DShannon'].min(), patches['DShannon'].max(), 5)
-        patchesDS=patches.groupby(np.digitize(patches['DShannon'], bins)).median()
-        plt.scatter(DS.ravel(),B.ravel())
-        # plt.yscale('log')
-        # plt.xscale('log')
-        plt.plot(patchesDS['DShannon'],patchesDS['B'],lw=2,c='k' )
-        plt.xlabel('Shannon diversity')
+            # Group by Shannon
+            bins = np.linspace(patches['DShannon'].min(), patches['DShannon'].max(), 5)
+            patchesDS=patches.groupby(np.digitize(patches['DShannon'], bins)).median()
+            plt.scatter(patches['DShannon'],patches[val])
+            # plt.yscale('log'), plt.xscale('log')
+            plt.plot(patchesDS['DShannon'],patchesDS[val],lw=2,c='k' )
+            plt.xlabel('Shannon diversity')
+            plt.ylabel(name)
 
         if save:
             figNini.savefig(fpath+'N_initial.png')
@@ -131,21 +156,12 @@ def detailed_plots(path,save=0,movie=0):
             figdynamics.savefig(fpath+'dynamics.png')
             figBEF.savefig(fpath+'BEF.png')
             figtraj.savefig(fpath+'N_traj.png')
+            figpyr.savefig(fpath+'N_pyramid.png')
         else:
             plt.show()
 
         # code_debugger()
 
-
-def measures(model,dic):
-    """Measure various summary quantities for a given model, store them in dictionary dic."""
-    Nf = model.results['n'][-1]
-    B=np.sum(Nf,axis=0)  #Total Biomass per patch
-    n=Nf/B
-    B = np.sum(Nf)  # Total Biomass on landscape
-    D = np.sum(Nf > model.prm['death'], axis=0)  # Diversity
-    DS = -np.sum(n * np.log(np.clip(n, 10 ** -15, None)), axis=0)  # Shannon diversity
-    dic.update({ 'biomass_tot':np.sum(B),'alpha_div':np.mean(D),'alpha_shannon':np.mean(DS)})
 
 
 def summary_plots(path,axes=None,save=0):

@@ -13,18 +13,56 @@ def code_debugger(skip=0):
     dic.update(stack[1+skip][0].f_locals)
     code.interact(local=dic)
 
-def generate_noise(shape,method='filter', **dprm):
-    """Generate noisy landscape (experimental, for now only method=filter works convincingly"""
+def reorder_FT(x,k=None):
+    """Fourier transforms are typically in order [0..k(N-1),-k(N)...-k(1)].
+    This reorders them to [-k(N)..k(N-1)] or back."""
+    if k is None:
+        lx, ly = x.shape[-2:]
+        kx,ky=fft.fftfreq(lx), fft.fftfreq(ly)
+    else:
+        kx,ky=k
+    x2=x[np.ix_(*[range(z) for z in x.shape[:-2]]+[ np.argsort(kx),np.argsort(ky) ])]
+    return x2
+
+def checkpos_FT(x,idx=0):
+    """Checks positivity of first element of x, by looking at conjugate symmetry of Fourier Transform."""
+    t=x
+    while len(t.shape)>2:
+        t=t[idx]
+    lx,ly=t.shape
+    check=np.max(np.abs(t[lx / 2:,1: ] - np.conj(t[1:lx / 2 + 1,1:][::-1, ::-1])))
+     #np.max(np.abs(t[lx / 2:, ly / 2:] - np.conj(t[1:lx / 2 + 1, 1:ly / 2 + 1][::-1, ::-1])))
+    # code_debugger()
+    return check
+
+def generate_noise(shape,method='fft', **dprm):
+    """Generate noisy landscape (for now only method=fft and filter works convincingly"""
     samples = dprm.get('samples', 500)
     dimres = []
-    if method=='filter':
+    if method=='fft':
+        ft = np.random.random(shape)
+        ft-=np.mean(ft)
+        ft[0,0]=10
+        if len(shape)==2:
+            color=dprm.get('color',1)
+            lx, ly = ft.shape
+            kx, ky = fft.fftfreq(lx), fft.fftfreq(ly)
+            k=np.add.outer(kx ** 2, ky ** 2)**0.5
+            ft=ft / (0.00000001+k** (color )) * np.exp(-k/np.max(k)*1./dprm.get('cutoff',1000))
+            res=fft.fft2(ft )
+            res=reorder_FT(res.real+res.imag)
+            plt.imshow(res)
+            plt.show()
+        else:
+            raise Exception('Not implemented yet')
+    elif method=='filter':
         res = np.random.random(shape)
         res = ndimage.gaussian_filter(res, sigma=5)
-        # res+=ndimage.gaussian_filter(res, sigma=80)#*np.max(res)
     elif method=='direct':
+        print 'Experimental, failed'
         for dim in range(len(shape)):
             freqs = np.logspace(0, np.log(shape[dim] / 100.), samples)
-            amps = freqs ** dprm.get('spectralexp', 0)
+            amps = freqs ** dprm.get('color', 1)
             phase = np.random.random(samples)
             xs = np.zeros(shape)
             dx = np.linspace(0, 1, shape[dim]).reshape(

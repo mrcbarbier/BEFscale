@@ -1,4 +1,4 @@
 [
-    ('dispersal_mean',  [0.01,0.1]),    #Mean dispersal strength
+    ('dispersal_mean',  [0.1,10.]),    #Mean dispersal strength
     ('sys', range(1) )    #Dummy variable (change number in parentheses to make multiple runs with same parameters)
 ]

@@ -41,10 +41,11 @@ if __name__=='__main__':
 
     path = Path('RESULTS/beflandscape')     # Folder containing simulations
     save= 1 #Save plots (0=show them in windows)
+    reseed=0 #Generate all coefficients anew for each run (0=keep same species and landscape, changing only what depends on looping parameters)
 
     multiscale=''#'all'     # Multiscale?
-    tmax=500    # Simulation length
-    tsample = 10  # Time between snapshots
+    tmax=250    # Simulation length
+    nsample = 20  # Number of snapshots (by default, logarithmitically spaced)
     use_Fourier=0   # Optimized code using fourier transforms
 
     # Parameters to iterate over
@@ -61,16 +62,19 @@ if __name__=='__main__':
                 multiscale='all'
         if 'tmax=' in i :
             tmax=ast.literal_eval(i.split('=')[-1])
-        if 'tsample=' in i :
-            tsample=ast.literal_eval(i.split('=')[-1])
+        if 'nsample=' in i :
+            nsample=ast.literal_eval(i.split('=')[-1])
         if 'FT=' in i :
             use_Fourier=ast.literal_eval(i.split('=')[-1])
         if 'save=' in i:
             save=i.split('=')[-1]
+        if 'reseed=' in i:
+            reseed=ast.literal_eval(i.split('=')[-1])
 
     # Loop over parameters given in axes
     # 'sys' is a dummy parameter standing in for replicas
-    loop(axes=axes,path=path,tmax=tmax,tsample=tsample,rerun='rerun' in sys.argv,multiscale=multiscale,use_Fourier=use_Fourier)
+    loop(axes=axes,path=path,tmax=tmax,nsample=nsample,rerun='rerun' in sys.argv,
+         reseed=reseed,multiscale=multiscale,use_Fourier=use_Fourier)
 
     # Plots
     # Detailed plots for each simulation
