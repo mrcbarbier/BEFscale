@@ -21,12 +21,12 @@
             'distribution':'noise',
             'method':'fft',
             'color':1, #Color of noise (spectral exponent)
-            'cutoff':.05, #Exponential cutoff on spectrum
+            'cutoff':.5, #Exponential cutoff on spectrum
         },
 
         #Species log-body size (trait used below to parametrize all interactions, trophic and nontrophic)
         'size': {
-            'range': (0, 100),
+            'range': (0, 10),
             'distribution': 'uniform',
         },
 
@@ -50,10 +50,10 @@
             'shape':('species','species'),
             'efficiency':0.9,
 
-            #Eating range
-            'distance':.25, #Distance of center of eating range to predator trait
-            'width':.25, #Width of eating range (if < distance, predator cannot eat equal size)
-            'range_exp':1, #Exponent for how eating range (size range of edible prey) changes with trait value
+            #Predation range (size range of edible prey)
+            'distance':.25, #Distance of upper limit of eating range to predator trait (if > 0, predator cannot eat equal size)
+            'width':.25, #Half-width of eating range
+            'range_exp':1, #Exponent for how width changes with trait value
 
             #Spatial scaling
             'multiscale':0, #Switch ON/OFF multiscale

@@ -169,6 +169,7 @@ class LandscapeModel():
             if not keep('trophic'):
                 # Get center and width of eating range
                 center,width=dprm.get('distance',1),dprm.get('width',1)
+                center=center+width
                 range_exp=dprm.get('range_exp',0)
                 if not range_exp is 0:
                     oldcenter=center

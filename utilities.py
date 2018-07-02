@@ -51,8 +51,8 @@ def generate_noise(shape,method='fft', **dprm):
             ft=ft / (0.00000001+k** (color )) * np.exp(-k/np.max(k)*1./dprm.get('cutoff',1000))
             res=fft.fft2(ft )
             res=reorder_FT(res.real+res.imag)
-            plt.imshow(res)
-            plt.show()
+            # plt.imshow(res)
+            # plt.show()
         else:
             raise Exception('Not implemented yet')
     elif method=='filter':

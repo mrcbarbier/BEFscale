@@ -93,7 +93,9 @@ def detailed_plots(path,save=0,movie=0):
         plt.title('Environment value')
         plt.colorbar()
         panel, ax = auto_subplot(panel, 2)
-        plt.errorbar(np.arange(N),data['envniche_pos'],yerr=data['envniche_width'] )
+
+        c,w=data['envniche_pos'], data['envniche_width']
+        plt.vlines(np.arange(N),c-w,c+w )
         plt.title('Species abiotic niche')
 
         #Role of different interactions
