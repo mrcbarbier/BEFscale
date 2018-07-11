@@ -21,7 +21,7 @@
             'distribution':'noise',
             'method':'fft',
             'color':1, #Color of noise (spectral exponent)
-            'cutoff':.5, #Exponential cutoff on spectrum
+            'cutoff':.5, #Exponential cutoff on spectrum (max=1)
         },
 
         #Species log-body size (trait used below to parametrize all interactions, trophic and nontrophic)
@@ -57,7 +57,9 @@
 
             #Spatial scaling
             'multiscale':0, #Switch ON/OFF multiscale
-            'trait_exp': 1, #Exponent for how spatial range of interaction changes with trait value
+            'scale':0,
+            'trait_exp': 0, #Exponent for how spatial range of interaction changes with trait value
+            'kernel':'gauss',
         },
 
         #Dispersal
@@ -65,14 +67,16 @@
             'mean':0.01,
             'multiscale':0,  #Switch ON/OFF multiscale
             'trait_exp': 0, #Exponent for how spatial range of interaction changes with trait value
-
+            'kernel':'gauss',
         },
 
         #Competition
         'competition': {
-            'mean': 0.1,
-            'multiscale': 0, #Switch ON/OFF multiscale
-            'trait_exp':1, #Exponent for how spatial range of interaction changes with trait value
+            'mean': 1.,
+            'multiscale': 1, #Switch ON/OFF multiscale
+            'scale':1.,
+            'trait_exp':0, #Exponent for how spatial range of interaction changes with trait value
+            'kernel':'gauss',
         },
 
         #Mortality

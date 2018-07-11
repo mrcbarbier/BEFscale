@@ -186,19 +186,19 @@ class LandscapeModel():
             growth[np.sum(mat,axis=1)<1 ]=1  #Species with no preys are autotrophs
             growth[trait==np.min(trait)]=1  #The smallest species is always an autotroph
 
-        if not keep('trophic_range'):
-            data['trophic_range']=trait**prm['trophic']['trait_exp'] #Spatial range scales with trait
+        if not keep('trophic_scale'):
+            data['trophic_scale']=prm['trophic']['scale']*trait**prm['trophic']['trait_exp'] #Spatial range scales with trait
 
         #=== Generate dispersal
         if not keep('dispersal'):
             data['dispersal']=prm['dispersal']['mean']*trait**prm['dispersal']['trait_exp']
 
         #=== Generate competition
-        if not keep('competition_range'):
-            data['competition_range']=trait**prm['competition']['trait_exp']
+        if not keep('competition_scale'):
+            data['competition_scale']= prm['competition']['scale']*(trait**prm['competition']['trait_exp'])
         if not keep('competition'):
             #For now, only self-competition
-            data['competition']=np.eye(N)
+            data['competition']=np.eye(N)*prm['competition']['mean']
 
         #=== Generate growth and mortality
         env=data['environment']
@@ -223,10 +223,11 @@ class LandscapeModel():
 
         dx=np.zeros(x.shape)
 
-
-        #Default convolution weights when multiscaling switched off
-        weights = np.ones((3, 3), dtype='float')
-        weights /= np.sum(weights)
+        #Default convolution weights for dispersal when multiscaling switched off
+        weights = np.zeros((3, 3), dtype='float')
+        weights[0,1]=weights[2,1]=1.
+        weights[1,0]=weights[1,2]=1.
+        weights[1,1]=-np.sum(weights)
 
         data=self.data
         prm=self.prm
@@ -240,15 +241,15 @@ class LandscapeModel():
             typfluxes=['Trophic +', 'Trophic -', 'Dispersal', 'Competition', 'Linear']
             fluxes=np.zeros((5,)+x.shape)
 
-        rge=data['trophic_range']
+        rge=data['trophic_scale']
         for i in range(N):
-
             #Dispersal
             if prm['dispersal']['multiscale']:
-                xx= ndimage.gaussian_filter(x[i], sigma=disp[i] )
+                drge = data['dispersal_scale']
+                xx = ndimage.gaussian_filter(x[i], sigma=drge[i], mode='wrap')
             else:
                 xx=ndimage.convolve(x[i],weights,mode='wrap')
-            dxdisp=disp[i]*(xx-x[i])
+            dxdisp=disp[i]*xx/x[i]
             dx[i]+=dxdisp
             if calc_fluxes:
                 fluxes[2,i]+=np.abs(dxdisp)
@@ -258,8 +259,9 @@ class LandscapeModel():
             if not len(prey):
                 continue
             if prm['trophic']['multiscale']:
-                xx= ndimage.gaussian_filter(x[i], sigma=rge[i] )
-                xps=[ndimage.gaussian_filter(x[p],sigma=rge[i] ) for p in prey   ]
+                xx = ndimage.gaussian_filter(x[i], sigma=rge[i], mode='wrap')
+                xps =[ ndimage.gaussian_filter(x[p], sigma=rge[i], mode='wrap')
+                    for p in prey   ]
             else:
                 xx= x[i]
                 xps=[x[p] for p in prey   ]
@@ -267,7 +269,7 @@ class LandscapeModel():
 
             dxprey=-pred*x[prey]/xps
             dx[prey]+=dxprey
-            dxpred=np.sum(pred,axis=0)*x[i]/xx*(1-x[i]) *prm['trophic']['efficiency']
+            dxpred=np.sum(pred,axis=0)*x[i]/xx *prm['trophic']['efficiency'] #(1-x[i])
             dx[i]+= dxpred
             if calc_fluxes:
                 fluxes[0,i]+=np.abs(dxpred)
@@ -276,9 +278,10 @@ class LandscapeModel():
         comp=data['competition']
         xc = x
         if prm['competition']['multiscale']:
-            rge = data['competition_range']
-            xc=ndimage.gaussian_filter(x, sigma=rge)
-        dxcomp= x*np.tensordot(comp,xc, axes=(1,0))
+            rge = data['competition_scale']
+            xc = np.array([ndimage.gaussian_filter(x[i], sigma=rge[i], mode='wrap') for i in range(N)])
+
+        dxcomp= np.tensordot(comp,xc, axes=(1,0))
         dxlin=growth-mortality
         dx += dxlin-dxcomp
 
@@ -287,20 +290,32 @@ class LandscapeModel():
             fluxes[3]+=-np.abs(dxcomp)
             fluxes[4]+=dxlin
             return dx,typfluxes,fluxes
+        if t==0 and 0:
+            plt.figure()
+            plt.imshow(x[0]*dxlin[0])
+        # return dxlin
         return dx
 
-    def get_lorentzian(self,a,x):
-        # return np.ones(x.shape)
-        return 2*a/(a**2+x**2)
+    def get_kernel(self,a,k,kernel='gauss'):
+        lx, ly = k.shape
+        if a<=0.1:
+            return np.ones(k.shape)
+        if kernel=='gauss':
+            val= np.exp(-(k**2)*(a**2/2))#*np.pi*(a**2*2) /(  np.pi * drge[i] ** 2 * 2
+            return val
+        elif kernel=='exp':
+            return 2*a/(a**2+np.abs(k)**2)
 
-    def get_dx_FT(self, t, x, calc_fluxes=0,resconv=1):
+    def get_dx_FT(self, t, x, calc_fluxes=0,resconv=128):
         """Get time derivatives in Fourier space (used in differential equation solver below) """
         dx = np.zeros(x.shape,dtype='complex')
         dxdisp = np.zeros(x.shape,dtype='complex')
+        size=np.prod(dx[0].shape).astype('float')
 
         data = self.data_FT
         prm = self.prm
-        mortality, growth, trophic, disp,k = data['mortality'], data['growth'], data['trophic'], data['dispersal'],data['kFourier']
+        mortality, growth, trophic, disp = data['mortality'], data['growth'], data['trophic'], data['dispersal']
+        k,kf=data['knormFourier'],data['kFourier']
         N = prm['species']
 
         if calc_fluxes:
@@ -318,7 +333,8 @@ class LandscapeModel():
             if not len(prey):
                 continue
 
-            Aij=np.tensordot(trophic[i][prey] , self.get_lorentzian(self.data['trophic_range'][i],k),axes=0)
+            Aij=np.tensordot(trophic[i][prey] , self.get_kernel(self.data['trophic_scale'][i],k,
+                                                                prm['trophic']['kernel'] ),axes=0)
 
             dxprey = - x[i] * Aij
             dx[prey] += dxprey
@@ -330,23 +346,26 @@ class LandscapeModel():
 
         # Competition
         comp = data['competition']
-        dxcomp = np.tensordot(comp, x*[ self.get_lorentzian(self.data['competition_range'][i],k) for i in range(N)], axes=(1, 0))
+        dxcomp = np.tensordot(comp, x*[ self.get_kernel(self.data['competition_scale'][i],k,
+                                                prm['competition']['kernel']) for i in range(N)], axes=(1, 0))
         dxlin = growth - mortality
         dx += dxlin - dxcomp
-        code_debugger()
 
         if calc_fluxes:
             fluxes[3] += np.abs(dxcomp)
             fluxes[4] += np.abs(dxlin)
             return dx, typfluxes, fluxes
 
-        def window(z):
+        def window(z,resconv):
+            # Only convolve with a limited window; typically remove at least the edges
             if resconv is None:
                 return z
             lx,ly=z.shape
             cx,cy=lx/2+1,ly/2+1
-            return z[max(cx-resconv,0):cx+resconv, max(cy-resconv,0):cy+resconv]
-        return np.array([ssignal.fftconvolve( dx[i],window(x[i]),'same') for i in range(N)]) + dxdisp
+            z2= z[max(cx-resconv,0):cx+resconv, max(cy-resconv,0):cy+resconv]
+            return z2
+        return np.array([ssignal.fftconvolve( dx[i]/ size,window(x[i],min(resconv,min(dx.shape[1:])//2-1 ))
+                                                                 ,'same') for i in range(N)]) + dxdisp
 
 
     def prep_FT(self,x,**kwargs):
@@ -359,7 +378,7 @@ class LandscapeModel():
         data=self.data
         landscape=data['environment']
         lx,ly=landscape.shape
-        kx,ky=fft.fftfreq(lx), fft.fftfreq(ly)
+        kx,ky=fft.fftfreq(lx)*2*np.pi, fft.fftfreq(ly)*2*np.pi
         for i in ('mortality','growth','trophic','competition','dispersal'):
             if i in data and data[i].shape[1:]==landscape.shape:
                 data_FT[i]= reorder_FT( fft.fft2(data[i]), (kx,ky))
@@ -369,8 +388,9 @@ class LandscapeModel():
         if use_Fourier=='reduced':
             kx=kx[:lx/2]
             ky=ky[:ly/2]
-        data_FT['kxFourier'],data_FT['kyFourier']= kx,ky
-        data_FT['kFourier']= np.sqrt(np.add.outer(kx**2,ky**2 ))
+        data_FT['kxFourier'],data_FT['kyFourier']= kx*lx,ky*ly
+        data_FT['knormFourier']= reorder_FT(np.sqrt(np.add.outer(kx**2,ky**2 )),(kx,ky))
+        data_FT['kFourier']= reorder_FT(np.sqrt(np.add.outer((kx*lx)**2,(ky*ly)**2 )),(kx,ky))
         self.data_FT=data_FT
         x2=fft.fft2(x)
         x2= reorder_FT(x2,(kx,ky))
@@ -389,20 +409,30 @@ class LandscapeModel():
             code_debugger()
         return x2
 
-    def evol(self,tmax=5,nsample=10,dt=.1,keep='all',print_msg=1,**kwargs):
+    def evol(self,tmax=10,nsample=10,dt=.1,keep='all',print_msg=1,**kwargs):
         """Time evolution of the model"""
 
         if kwargs.get('reseed',1) or not self.data:
             # Create new matrices and initial conditions
             self.generate()
             self.results['t']=np.zeros(1)
-        elif not kwargs.get('extend',0):
-            # Only create new initial conditions
-            print "Regenerating initial conditions"
-            self.generate(self.results.keys() )
-            self.results['t']=np.zeros(1)
+        else:
+            init = kwargs.get('init',0)
+            if init=='extend':
+                # Restart from end of last simulation
+                pass
+            elif init=='restart':
+                # Restart from start of last simulation
+                for label in self.results:
+                    self.results[label]=self.results[label][:1]
+            else:
+                # Only create new initial conditions
+                print "Regenerating initial conditions"
+                self.generate(self.results.keys() )
+                self.results['t']=np.zeros(1)
 
         x=self.results['n'][-1].copy()
+
         death = self.prm.get('death', 10 ** -15)
 
         use_Fourier = kwargs.get('use_Fourier', 0)
@@ -417,8 +447,8 @@ class LandscapeModel():
 
             if  use_Fourier:
                 dx=self.get_dx_FT(t,x)
-                print np.max(x),np.max(dx),checkpos_FT(x), checkpos_FT(dx)
                 x=self.setpos_FT(x+dt*dx)
+                # x=x+dt*dx
                 x[:,cx,cy]=np.clip(x[:,cx,cy],0,None)
             else:
                 dx=self.get_dlogx(t,x)
@@ -434,7 +464,7 @@ class LandscapeModel():
                     print('Time {}'.format(t) )
                 if keep=='all' or t+dt>tmax:
                     if use_Fourier:
-                        kx, ky=data_FT['kxFourier'], data_FT['kyFourier']
+                        kx, ky=self.data_FT['kxFourier'], self.data_FT['kyFourier']
                         if use_Fourier=='reduced':
                             lx,ly=landscape.shape
                             x2=np.zeros(x.shape)
@@ -450,7 +480,6 @@ class LandscapeModel():
                     realx[realx<=death]=0
                     self.results['n']=np.concatenate([self.results['n'],[realx]])
                     self.results['t']=np.concatenate([self.results['t'],[tsamp]])
-
         return 1
 
 
