@@ -1,41 +1,55 @@
 from landscapemodel import *
 from plots import *
 
-def FTtest(path='TEST/FTtest',species=6,tmax=1):
-    """Test Fourier Transform optimization"""
-    path=Path(path).mkdir()
-    if not 'files.csv' in os.listdir(path):
-        rerun=1
 
+def ABtest(comparison,path,species=1,tmax=100,tshow=(0,-1),**kwargs):
+    """A/B testing: plot results side-by-side for sets of options in comparison"""
+    path=Path(path).mkdir()
     prm=deepcopy(LandscapeModel.dft_prm)
     prm['species']=species
     prm['landx']=prm['landy']=32
     prm['dispersal']['mean']=1
 
     model=LandscapeModel(parameters=prm)
-    model.evol(use_Fourier=0,dt=0.01,tmax=tmax)
-    direct =deepcopy(model.results)
-    model.evol(use_Fourier=1,reseed=0,init='restart',dt=0.01,tmax=tmax)
-    fourier =deepcopy(model.results)
-
+    results=[]
+    for comp in comparison:
+        dic={}
+        dic.update(kwargs)
+        if results:
+            dic['reseed']=0
+            dic['init']='restart'
+        dic.update(comp)
+        model.evol(dt=0.01,tmax=tmax,**dic)
+        results.append(deepcopy(model.results))
 
     for s in range(species):
         plt.figure()
         plt.suptitle('Species {}'.format(s) )
         panel=0
-        for i in [0,-1]:#range(len(direct['n']))
-            panel, ax = auto_subplot(panel, 4)
-            d,f=direct['n'][i][s],fourier['n'][i][s]
-            span=np.min(np.minimum(d,f)),np.max(np.maximum(d,f))
-            plt.colorbar(plt.imshow(d,vmin=span[0],vmax=span[1]),ax=ax)
-            t=direct['t'][i]
-            plt.title('Direct t={}'.format(t) )
-            panel, ax = auto_subplot(panel, 4)
-            plt.colorbar(plt.imshow(f,vmin=span[0],vmax=span[1]),ax=ax)
-            plt.title('Fourier t={}'.format(t) )
+        for i in tshow:
+            span=min([np.min(r['n'][i][s]) for r in results ]) , max([np.max(r['n'][i][s]) for r in results ])
+            for idx,comp, res in zip(range(len(results)),comparison,results):
+                panel, ax = auto_subplot(panel, len(tshow) * len(results))
+                plt.colorbar(plt.imshow(res['n'][i][s],vmin=span[0],vmax=span[1]),ax=ax)
+                t=res['t'][i]
+                plt.title('{} t={}'.format(comp.get('title',idx), t) )
 
-    plt.show()
-    code_debugger()
+    if kwargs.get('debug',0):
+        code_debugger()
+    else:
+        plt.show()
+
+def FTtest(path='TEST/FTtest',**kwargs):
+    """Test Fourier Transform optimization"""
+    comparison=[{'use_Fourier':0,'title':'Direct'},{'use_Fourier':1,'title':'Fourier'}  ]
+    ABtest(comparison,path,**kwargs)
+
+def algotest(path='TEST/algotest',**kwargs):
+    """Test dependence on integration algorithm"""
+    comparison=[{'method':'Euler','title':'Euler'},{'method':'scipy','title':'scipy+Fourier','use_Fourier':1}  ]
+    ABtest(comparison,path,**kwargs)
+
 
 if __name__=='__main__':
-    FTtest()
+    # FTtest()
+    algotest(debug='debug' in sys.argv)

@@ -44,6 +44,8 @@
 
         #Trophic interactions
         'trophic':{
+            'ON':0, #Switch ON/OFF trophic interactions
+
             #Coefficient values
             'mean':1., 'std':0.1,
             'distribution':'normal',
@@ -57,26 +59,34 @@
 
             #Spatial scaling
             'multiscale':0, #Switch ON/OFF multiscale
-            'scale':0,
-            'trait_exp': 0, #Exponent for how spatial range of interaction changes with trait value
-            'kernel':'gauss',
+            'scale':0., #Typical spatial scale (in pixels)
+            'trait_exp':0, #Exponent for how scale changes with trait value
+            'kernel':'gauss', #Spatial kernel
         },
 
         #Dispersal
         'dispersal':{
-            'mean':0.01,
-            'multiscale':0,  #Switch ON/OFF multiscale
+            'mean':1,
+            'multiscale':0,  #Switch ON/OFF multiscale (ON not recommended)
             'trait_exp': 0, #Exponent for how spatial range of interaction changes with trait value
-            'kernel':'gauss',
+            'kernel':'gauss', #Spatial kernel
         },
 
         #Competition
         'competition': {
-            'mean': 1.,
+            'ON':1, #Switch ON/OFF competition (unstable if OFF)
+
+            #Coefficient values
+            'diagonal':1,
+            'mean': 0.,'std':0,
+            'distribution':'normal',
+            'shape':('species','species'),
+
+            #Spatial scaling
             'multiscale': 1, #Switch ON/OFF multiscale
-            'scale':1.,
-            'trait_exp':0, #Exponent for how spatial range of interaction changes with trait value
-            'kernel':'gauss',
+            'scale':1., #Typical spatial scale (in pixels)
+            'trait_exp':0, #Exponent for how scale changes with trait value
+            'kernel':'gauss', #Spatial kernel
         },
 
         #Mortality

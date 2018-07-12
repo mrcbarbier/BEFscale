@@ -1,4 +1,5 @@
 from utilities import *
+import scipy.integrate as scint
 
 #===========================================================================================================
 
@@ -134,13 +135,17 @@ class LandscapeModel():
             if dist=='uniform':
                 res=np.random.uniform(dprm['range'][0],dprm['range'][1],shape )
             elif dist=='normal':
-                res=np.random.normal(dprm['mean'],dprm['std'],shape )
+                if dprm['std']>0:
+                    res=np.random.normal(dprm['mean'],dprm['std'],shape )
+                else:
+                    res=np.ones(shape)*dprm['mean']
             elif dist=='noise':
                 # Generate noisy landscape
                 res=generate_noise(shape=shape,**{i:j for i,j in dprm.items() if i!='shape'} )
                 rge=dprm['range']
                 res=rge[0]+(res-np.min(res))*(rge[1]-rge[0])/(np.max(res)-np.min(res)) #Rescale generated noise
-
+            if 'diagonal' in dprm:
+                np.fill_diagonal(res,dprm['diagonal'])
             if dprm.get('type','constant')=='variable':
                 # Store variables in self.results
                 self.results[name]=np.array([res])
@@ -161,27 +166,30 @@ class LandscapeModel():
         if not keep('trophic') or not keep('growth'):
             dprm = prm['trophic']
             dist = np.add.outer(-trait, trait).astype('float')  # Body size difference between predator and prey
-            if 'trophic' in data:
-                mat=data['trophic']
+
+            if dprm['ON']:
+                if 'trophic' in data:
+                    mat=data['trophic']
+                else:
+                    mat=np.ones((N,N) )
+
+                if not keep('trophic'):
+                    # Get center and width of eating range
+                    center,width=dprm.get('distance',1),dprm.get('width',1)
+                    center=center+width
+                    range_exp=dprm.get('range_exp',0)
+                    if not range_exp is 0:
+                        oldcenter=center
+                        center= center*(trait**range_exp).reshape( trait.shape+(1,) )
+                        width=width*center/oldcenter+np.min(np.abs(dist),axis=1)
+
+                    # Set interactions to zero if the prey does not fall in the eating range
+                    mat[dist > -center + width] = 0
+                    mat[dist<-center-width ]=0
+                    np.fill_diagonal(mat,0)
+                    data['trophic']=mat
             else:
-                mat=np.ones((N,N) )
-
-            if not keep('trophic'):
-                # Get center and width of eating range
-                center,width=dprm.get('distance',1),dprm.get('width',1)
-                center=center+width
-                range_exp=dprm.get('range_exp',0)
-                if not range_exp is 0:
-                    oldcenter=center
-                    center= center*(trait**range_exp).reshape( trait.shape+(1,) )
-                    width=width*center/oldcenter+np.min(np.abs(dist),axis=1)
-
-                # Set interactions to zero if the prey does not fall in the eating range
-                mat[dist > -center + width] = 0
-                mat[dist<-center-width ]=0
-                np.fill_diagonal(mat,0)
-                data['trophic']=mat
-
+                mat=np.zeros((N,N))
             # Add autotrophic growth only to basal species
             growth[np.sum(mat,axis=1)<1 ]=1  #Species with no preys are autotrophs
             growth[trait==np.min(trait)]=1  #The smallest species is always an autotroph
@@ -196,9 +204,7 @@ class LandscapeModel():
         #=== Generate competition
         if not keep('competition_scale'):
             data['competition_scale']= prm['competition']['scale']*(trait**prm['competition']['trait_exp'])
-        if not keep('competition'):
-            #For now, only self-competition
-            data['competition']=np.eye(N)*prm['competition']['mean']
+        # print data['competition']
 
         #=== Generate growth and mortality
         env=data['environment']
@@ -254,6 +260,8 @@ class LandscapeModel():
             if calc_fluxes:
                 fluxes[2,i]+=np.abs(dxdisp)
 
+            if not prm['trophic']['ON']:
+                continue
             #Predation
             prey=np.where(trophic[i]!=0)[0]
             if not len(prey):
@@ -274,14 +282,18 @@ class LandscapeModel():
             if calc_fluxes:
                 fluxes[0,i]+=np.abs(dxpred)
                 fluxes[1,prey]+=-np.abs(dxprey)
-        #Competition
-        comp=data['competition']
-        xc = x
-        if prm['competition']['multiscale']:
-            rge = data['competition_scale']
-            xc = np.array([ndimage.gaussian_filter(x[i], sigma=rge[i], mode='wrap') for i in range(N)])
 
-        dxcomp= np.tensordot(comp,xc, axes=(1,0))
+        #Competition
+        if prm['competition']['ON']:
+            comp=data['competition']
+            xc = x
+            if prm['competition']['multiscale']:
+                rge = data['competition_scale']
+                xc = np.array([ndimage.gaussian_filter(x[i], sigma=rge[i], mode='wrap') for i in range(N)])
+            dxcomp= np.tensordot(comp,xc, axes=(1,0))
+        else:
+            dxcomp=0
+
         dxlin=growth-mortality
         dx += dxlin-dxcomp
 
@@ -328,6 +340,8 @@ class LandscapeModel():
             if calc_fluxes:
                 fluxes[2, i] += np.abs(dxdisp)
 
+            if not prm['trophic']['ON']:
+                continue
             #Predation
             prey = np.where(trophic[i] != 0)[0]
             if not len(prey):
@@ -345,9 +359,12 @@ class LandscapeModel():
                 fluxes[1, prey] += np.abs(dxprey)
 
         # Competition
-        comp = data['competition']
-        dxcomp = np.tensordot(comp, x*[ self.get_kernel(self.data['competition_scale'][i],k,
-                                                prm['competition']['kernel']) for i in range(N)], axes=(1, 0))
+        if prm['competition']['ON']:
+            comp = data['competition']
+            dxcomp = np.tensordot(comp, x*[ self.get_kernel(self.data['competition_scale'][i],k,
+                                                    prm['competition']['kernel']) for i in range(N)], axes=(1, 0))
+        else:
+            dxcomp=0
         dxlin = growth - mortality
         dx += dxlin - dxcomp
 
@@ -397,19 +414,61 @@ class LandscapeModel():
         assert checkpos_FT(x2) <10**-10
         return x2
 
+    def save_results(self,t,x,use_Fourier=0,print_msg=0,death=0):
+        if use_Fourier:
+            kx, ky = self.data_FT['kxFourier'], self.data_FT['kyFourier']
+            if use_Fourier == 'reduced':
+                lx, ly = self.data['environment'].shape
+                x2 = np.zeros(x.shape)
+                x2[:lx / 2, :ly / 2] = x
+                x2[lx / 2:, :ly / 2] - np.conj(x)
+                x2[:lx / 2, ly / 2:] - np.conj(x)
+                x2[lx / 2:, ly / 2:] = x
+            else:
+                x2 = x
+            realx = fft.ifft2(reorder_FT(x2, (kx, ky))).real
+        else:
+            realx = x
+        realx[realx <= death] = 0
+        if print_msg:
+            print('   Btot {:.2g}'.format(np.sum(realx)))
+        self.results['n'] = np.concatenate([self.results['n'], [realx]])
+        self.results['t'] = np.concatenate([self.results['t'], [t]])
 
-    def setpos_FT(self,x):
-        """Enforce positivity of x by symmetry of its Fourier transform."""
-        lx,ly=x.shape[-2:]
-        x2=x.copy()
-        x2[:,lx / 2+1:,1:]=np.conj(x2[:,1:lx / 2 ,1:][:,::-1, ::-1])
-        x2[:,lx / 2,ly / 2+1:]=np.conj(x2[:,lx / 2,1:ly / 2][:,::-1] )
-        x2[:,lx/2,ly/2]=x2[:,lx/2,ly/2].real
-        if checkpos_FT(x2)>0.0001:
-            code_debugger()
-        return x2
+    def integrate(self,integrator,ti,tf,x,use_Fourier=0,**kwargs):
+        tries=0
+        deltat=kwargs.get('deltat',None)
+        if deltat is None:
+            deltat= tf - ti
+        t=lastfail=ti
+        x0=x
+        result,success,error=None,False,None
+        while (not success) or t<tf:
+            if tries>kwargs.get("MAX_TRIES",500):
+                raise Exception("MAX TRIES reached in LandscapeModel.integrate")
+            if tries>0 and deltat>10**-15:
+                lastfail=t
+                if deltat/2 >= kwargs.get('mindeltat',0):
+                    deltat/=2.
+                    if kwargs.get('print_msg',1):
+                        print 'Failure, trying tsample', deltat
+                else:
+                    error = 'ERROR: step too small for integrator to converge'
+                    break
+            integrator.set_initial_value(x.ravel(), t)  # .set_f_params(reff)
+            result=integrator.integrate(t+max(10**-5,min(deltat,tf-t)) )
+            success=integrator.successful()
+            if success:
+                t = integrator.t
+                x = result
+                if t<tf and not tries and t>deltat*100 and t-lastfail>deltat*10 :
+                    deltat*=2
+            tries+=1
+        if np.isnan(result).any():
+            error = 'ERROR: NaN'
+        return result,success, error,ifelse(deltat<(tf-ti),deltat,None)
 
-    def evol(self,tmax=10,nsample=10,dt=.1,keep='all',print_msg=1,**kwargs):
+    def evol(self,tmax=10,nsample=10,dt=.1,keep='all',print_msg=1,method='scipy',use_Fourier=0, **kwargs):
         """Time evolution of the model"""
 
         if kwargs.get('reseed',1) or not self.data:
@@ -431,55 +490,67 @@ class LandscapeModel():
                 self.generate(self.results.keys() )
                 self.results['t']=np.zeros(1)
 
-        x=self.results['n'][-1].copy()
+        x0=x=self.results['n'][-1].copy()
 
         death = self.prm.get('death', 10 ** -15)
 
-        use_Fourier = kwargs.get('use_Fourier', 0)
         if use_Fourier:
             x=self.prep_FT(x,**kwargs)
             lx,ly=x.shape[-2:]
             cx,cy=lx/2,ly/2
 
-        t=0
-        tsamples=list(np.logspace(np.log10(dt),np.log10(tmax),nsample ))
-        while t<tmax:
-
-            if  use_Fourier:
-                dx=self.get_dx_FT(t,x)
-                x=self.setpos_FT(x+dt*dx)
-                # x=x+dt*dx
-                x[:,cx,cy]=np.clip(x[:,cx,cy],0,None)
+            def get_dx(t,x):
+                x=x.reshape(x0.shape)
+                return self.get_dx_FT(t,x ).ravel()
+            integ='zvode'
+        else:
+            if 'noise' in self.data:
+                integ = 'lvode'
             else:
-                dx=self.get_dlogx(t,x)
-                x*=(1+np.clip(dt* dx,-.999,None))
-                x[x<death]=0
-            t+=dt
+                integ = 'dop853'
+            def get_dx(t,x):
+                x=x.reshape(x0.shape)
+                return (x*self.get_dlogx(t,x)).ravel()
 
-            if  t+dt > tsamples[0]:
-                tsamp=tsamples.pop(0)
-                if not tsamples:
-                    tsamples.append(tmax)
+        t,deltat=0,None
+        tsamples=list(np.logspace(np.log10(dt),np.log10(tmax),nsample ))
+        if method=='scipy':
+            integrator = scint.ode(get_dx).set_integrator(integ, nsteps=500000)
+            for ts in tsamples:
+                x, success, error,deltat = self.integrate(integrator,t,ts, x, use_Fourier=use_Fourier,print_msg=print_msg,
+                                                          deltat=deltat)
+                if error:
+                    print error
+                    return 0
+                if not success:
+                    print 'WARNING: scipy integrator failed, switching to Euler.'
+                    method='Euler'
+                    break
+                t=ts
                 if print_msg:
-                    print('Time {}'.format(t) )
-                if keep=='all' or t+dt>tmax:
-                    if use_Fourier:
-                        kx, ky=self.data_FT['kxFourier'], self.data_FT['kyFourier']
-                        if use_Fourier=='reduced':
-                            lx,ly=landscape.shape
-                            x2=np.zeros(x.shape)
-                            x2[:lx/2,:ly/2]=x
-                            x2[lx/2:,:ly/2]-np.conj(x)
-                            x2[:lx/2,ly/2:]-np.conj(x)
-                            x2[lx/2:,ly/2:]=x
-                        else:
-                            x2=x
-                        realx=fft.ifft2(reorder_FT(x2,(kx,ky))).real
-                    else:
-                        realx=x
-                    realx[realx<=death]=0
-                    self.results['n']=np.concatenate([self.results['n'],[realx]])
-                    self.results['t']=np.concatenate([self.results['t'],[tsamp]])
+                    print('Time {}'.format(ts) )
+                if keep=='all' or ts+dt>=tmax:
+                    self.save_results(t,x.reshape(x0.shape),use_Fourier=use_Fourier,print_msg=print_msg,death=death)
+        if method=='Euler':
+            while t<tmax:
+                if  use_Fourier:
+                    dx=self.get_dx_FT(t,x)
+                    x=setpos_FT(x+dt*dx)
+                    # x=x+dt*dx
+                    x[:,cx,cy]=np.clip(x[:,cx,cy],0,None)
+                else:
+                    dx=self.get_dlogx(t,x)
+                    x*=(1+np.clip(dt* dx,-.999,None))
+                    x[x<death]=0
+                t+=dt
+                if  t+dt > tsamples[0]:
+                    tsamp=tsamples.pop(0)
+                    if not tsamples:
+                        tsamples.append(tmax)
+                    if print_msg:
+                        print('Time {}'.format(t) )
+                    if keep=='all' or t+dt>tmax:
+                        self.save_results(tsamp, x, use_Fourier=use_Fourier, print_msg=print_msg,death=death)
         return 1
 
 

@@ -2,6 +2,10 @@ import numpy as np, pandas as pd,scipy.integrate as scint, scipy.ndimage as ndim
 import time,sys, matplotlib.pyplot as plt, scipy.fftpack as fft,scipy.signal as ssignal, os, ast
 from copy import deepcopy
 
+def ifelse(x,a,b):
+    if x:
+        return a
+    return b
 
 def code_debugger(skip=0):
     """Utility: """
@@ -34,6 +38,18 @@ def checkpos_FT(x,idx=0):
      #np.max(np.abs(t[lx / 2:, ly / 2:] - np.conj(t[1:lx / 2 + 1, 1:ly / 2 + 1][::-1, ::-1])))
     # code_debugger()
     return check
+
+def setpos_FT(self,x):
+    """Enforce positivity of x by symmetry of its Fourier transform."""
+    lx,ly=x.shape[-2:]
+    x2=x.copy()
+    x2[:,lx / 2+1:,1:]=np.conj(x2[:,1:lx / 2 ,1:][:,::-1, ::-1])
+    x2[:,lx / 2,ly / 2+1:]=np.conj(x2[:,lx / 2,1:ly / 2][:,::-1] )
+    x2[:,lx/2,ly/2]=x2[:,lx/2,ly/2].real
+    if checkpos_FT(x2)>0.0001:
+        print 'setpos_FT failed'
+        code_debugger()
+    return x2
 
 def generate_noise(shape,method='fft', **dprm):
     """Generate noisy landscape (for now only method=fft and filter works convincingly"""
