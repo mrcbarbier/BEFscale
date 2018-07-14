@@ -191,7 +191,9 @@ class LandscapeModel():
                         sig=dprm.get('randomness',0)
                         if sig>0:
                             center+= np.random.normal(0,sig, size=center.shape)
-                        width=width*center/oldcenter+np.min(np.abs(dist),axis=1)
+                        width=width*center/oldcenter
+                        width[1:]=width[1:]+ np.min(np.abs(dist + center), axis=1).reshape(center.shape)[1:]
+                              #np.min( [ ,  dw],axis=0)
 
                     # Set interactions to zero if the prey does not fall in the eating range
                     mat[dist > -center + width] = 0
@@ -207,7 +209,7 @@ class LandscapeModel():
             else:
                 mat=np.zeros((N,N))
             # Add autotrophic growth only to basal species
-            growth[np.sum(mat,axis=1)<1 ]=1  #Species with no preys are autotrophs
+            growth[np.sum(mat,axis=1)==0 ]=1  #Species with no preys are autotrophs
             growth[trait==np.min(trait)]=1  #The smallest species is always an autotroph
 
         if not keep('trophic_scale'):

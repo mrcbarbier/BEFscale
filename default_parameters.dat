@@ -99,7 +99,7 @@
         #Mortality
         'mortality': {
             'distribution': 'uniform',
-            'range': (0.005, 0.05),
+            'range': (0.002, 0.01),
         },
 
     }

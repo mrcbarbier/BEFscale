@@ -182,7 +182,7 @@ def detailed_plots(path,save=0,movie=0):
             # Group by species diversity
             patchesD=patches.groupby('D').median()
             plt.scatter(patches['D'],patches[val])
-            #plt.yscale('log'),plt.xscale('log')
+            plt.yscale('log')#,plt.xscale('log')
             plt.plot(patchesD.index,patchesD[val],lw=2,c='k' )
             plt.xlabel('Diversity')
             plt.ylabel(name)
@@ -192,7 +192,7 @@ def detailed_plots(path,save=0,movie=0):
             bins = np.linspace(patches['DShannon'].min(), patches['DShannon'].max(), 5)
             patchesDS=patches.groupby(np.digitize(patches['DShannon'], bins)).median()
             plt.scatter(patches['DShannon'],patches[val])
-            # plt.yscale('log'), plt.xscale('log')
+            plt.yscale('log')#, plt.xscale('log')
             plt.plot(patchesDS['DShannon'],patchesDS[val],lw=2,c='k' )
             plt.xlabel('Shannon diversity')
             plt.ylabel(name)
