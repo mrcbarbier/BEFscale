@@ -21,7 +21,7 @@
             'distribution':'noise',
             'method':'fft',
             'color':1, #Color of noise (spectral exponent)
-            'cutoff':.5, #Exponential cutoff on spectrum (max=1)
+            'cutoff':.3, #Exponential cutoff on spectrum (max=1)
         },
 
         #Species log-body size (trait used below to parametrize all interactions, trophic and nontrophic)
@@ -44,7 +44,7 @@
 
         #Trophic interactions
         'trophic':{
-            'ON':0, #Switch ON/OFF trophic interactions
+            'ON':1, #Switch ON/OFF trophic interactions
 
             #Coefficient values
             'mean':1., 'std':0.1,
@@ -55,36 +55,40 @@
             #Predation range (size range of edible prey)
             'distance':.25, #Distance of upper limit of eating range to predator trait (if > 0, predator cannot eat equal size)
             'width':.25, #Half-width of eating range
-            'range_exp':1, #Exponent for how width changes with trait value
+            'range_exp':.5, #Exponent for how width changes with trait value
 
             #Spatial scaling
-            'multiscale':0, #Switch ON/OFF multiscale
-            'scale':0., #Typical spatial scale (in pixels)
-            'trait_exp':0, #Exponent for how scale changes with trait value
+            'multiscale':1, #Switch ON/OFF multiscale (always ON in Fourier)
+            'scale':1., #Typical spatial scale (in pixels)
+            'trait_exp':0.5, #Exponent for how scale changes with trait value
             'kernel':'gauss', #Spatial kernel
         },
 
         #Dispersal
         'dispersal':{
             'mean':1,
-            'multiscale':0,  #Switch ON/OFF multiscale (ON not recommended)
+            'multiscale':0,  #Switch ON/OFF multiscale (ON not supported yet)
+            'kernel':'gauss', #Spatial kernel (not supported yet)
             'trait_exp': 0, #Exponent for how spatial range of interaction changes with trait value
-            'kernel':'gauss', #Spatial kernel
         },
 
         #Competition
         'competition': {
             'ON':1, #Switch ON/OFF competition (unstable if OFF)
-
-            #Coefficient values
-            'diagonal':1,
-            'mean': 0.,'std':0,
-            'distribution':'normal',
             'shape':('species','species'),
 
+            #Coefficient values:
+                #Intraspecific
+                'diagonal':1,
+
+                #Interspecific
+                'mean': 0.1,'std':0.1,
+                'sign':1, #Competition coefficients are non-negative (no facilitation)
+                'distribution':'normal',
+
             #Spatial scaling
-            'multiscale': 1, #Switch ON/OFF multiscale
-            'scale':1., #Typical spatial scale (in pixels)
+            'multiscale': 1, #Switch ON/OFF multiscale (always ON in Fourier)
+            'scale':4., #Typical spatial scale (in pixels)
             'trait_exp':0, #Exponent for how scale changes with trait value
             'kernel':'gauss', #Spatial kernel
         },
@@ -92,7 +96,7 @@
         #Mortality
         'mortality': {
             'distribution': 'uniform',
-            'range': (0.001, 0.01),
+            'range': (0.005, 0.05),
         },
 
     }

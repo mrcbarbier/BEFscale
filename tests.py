@@ -7,7 +7,7 @@ def ABtest(comparison,path,species=1,tmax=100,tshow=(0,-1),**kwargs):
     path=Path(path).mkdir()
     prm=deepcopy(LandscapeModel.dft_prm)
     prm['species']=species
-    prm['landx']=prm['landy']=32
+    prm['landx']=prm['landy']=64
     prm['dispersal']['mean']=1
 
     model=LandscapeModel(parameters=prm)
@@ -41,7 +41,7 @@ def ABtest(comparison,path,species=1,tmax=100,tshow=(0,-1),**kwargs):
 
 def FTtest(path='TEST/FTtest',**kwargs):
     """Test Fourier Transform optimization"""
-    comparison=[{'use_Fourier':0,'title':'Direct'},{'use_Fourier':1,'title':'Fourier'}  ]
+    comparison=[{'method':'Euler','use_Fourier':0,'title':'Direct'},{'method':'Euler','use_Fourier':1,'title':'Fourier'}  ]
     ABtest(comparison,path,**kwargs)
 
 def algotest(path='TEST/algotest',**kwargs):
@@ -51,5 +51,5 @@ def algotest(path='TEST/algotest',**kwargs):
 
 
 if __name__=='__main__':
-    # FTtest()
-    algotest(debug='debug' in sys.argv)
+    # FTtest(debug='debug' in sys.argv,species=16,tmax=10)
+    algotest(debug='debug' in sys.argv,species=16,tmax=10)

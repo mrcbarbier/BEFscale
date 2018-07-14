@@ -44,9 +44,10 @@ if __name__=='__main__':
     reseed=0 #Generate all coefficients anew for each run (0=keep same species and landscape, changing only what depends on looping parameters)
 
     multiscale=''#'all'     # Multiscale?
-    tmax=250    # Simulation length
+    tmax=50    # Simulation length
     nsample = 20  # Number of snapshots (by default, logarithmitically spaced)
-    use_Fourier=0   # Optimized code using fourier transforms
+    use_Fourier=1   # Optimized code using fourier transforms
+    method='scipy'
 
     # Parameters to iterate over
     axes= eval('\n'.join(line for line in open('loop_parameters.dat')) ,{},{})
@@ -66,6 +67,8 @@ if __name__=='__main__':
             nsample=ast.literal_eval(i.split('=')[-1])
         if 'FT=' in i :
             use_Fourier=ast.literal_eval(i.split('=')[-1])
+        if 'method=' in i :
+            method=ast.literal_eval(i.split('=')[-1])
         if 'save=' in i:
             save=i.split('=')[-1]
         if 'reseed=' in i:
@@ -74,7 +77,7 @@ if __name__=='__main__':
     # Loop over parameters given in axes
     # 'sys' is a dummy parameter standing in for replicas
     loop(axes=axes,path=path,tmax=tmax,nsample=nsample,rerun='rerun' in sys.argv,
-         reseed=reseed,multiscale=multiscale,use_Fourier=use_Fourier)
+         reseed=reseed,multiscale=multiscale,use_Fourier=use_Fourier,method=method)
 
     # Plots
     # Detailed plots for each simulation

@@ -39,7 +39,7 @@ def checkpos_FT(x,idx=0):
     # code_debugger()
     return check
 
-def setpos_FT(self,x):
+def setpos_FT(x):
     """Enforce positivity of x by symmetry of its Fourier transform."""
     lx,ly=x.shape[-2:]
     x2=x.copy()
@@ -219,3 +219,39 @@ def auto_subplot(panel,nbpanels,rows=None,projection=None,return_all=0):
     if return_all:
         return ax,nbrows,panels_per_row
     return panel,ax
+
+
+def draw_network(mat,ypos=None,xpos=None,directed=1,newfig=1,hold=0):
+    edges=[(i,j) for i,j in zip(*np.where(mat!=0)) if mat[i,j]>mat[j,i] ]
+    nodes=np.sort(np.unique(np.concatenate(edges)))
+    N=len(nodes)
+    if newfig:
+        fig=plt.figure()
+    else:
+        fig=plt.gcf()
+    if xpos is None:
+        xpos=dict(zip(nodes,np.random.random(N) ))
+    if ypos is None:
+        ypos=dict(zip(nodes,np.random.random(N)))
+    xs = [xpos[n] for n in nodes]
+    ys = [ypos[n] for n in nodes]
+    xs,ys=np.array(xs),np.array(ys)
+    plt.scatter(xs,ys)
+    ax = plt.gca()
+    if directed:
+        # X,Y,U,V=zip(*[(xpos[i],ypos[i],xpos[j]-xpos[i],ypos[j]-ypos[i]) for i,j in edges])
+        # plt.quiver(X,Y,U,V)
+        for i, j in edges:
+            try:
+                line=plt.FancyArrow(xpos[i],ypos[i],xpos[j]-xpos[i],ypos[j]-ypos[i] )
+            except:
+                line=plt.Arrow(xpos[i],ypos[i],xpos[j]-xpos[i],ypos[j]-ypos[i] ,width=0.02)
+            ax.add_artist(line)
+    else:
+        for i,j in edges:
+            line=plt.Line2D([xpos[i],xpos[j]],[ypos[i],ypos[j]] )
+            ax.add_artist(line)
+    if not hold:
+        plt.show()
+    else:
+        return fig

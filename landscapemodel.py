@@ -13,6 +13,7 @@ class LandscapeModel():
     #Default parameters
     dft_prm=eval('\n'.join(line for line in open('default_parameters.dat')) ,{},{})
 
+    methods=('scipy','Euler') #Available algorithms
 
     def __init__(self,**kwargs):
         """When the model object is created, store passed information."""
@@ -146,6 +147,12 @@ class LandscapeModel():
                 res=rge[0]+(res-np.min(res))*(rge[1]-rge[0])/(np.max(res)-np.min(res)) #Rescale generated noise
             if 'diagonal' in dprm:
                 np.fill_diagonal(res,dprm['diagonal'])
+            if 'sign' in dprm:
+                sign=dprm['sign']
+                if sign>0:
+                    res=np.abs(res)
+                elif sign<0:
+                    res=-np.abs(res)
             if dprm.get('type','constant')=='variable':
                 # Store variables in self.results
                 self.results[name]=np.array([res])
@@ -220,8 +227,8 @@ class LandscapeModel():
 
 
 
-    def get_dlogx(self,t,x,calc_fluxes=False):
-        """Get time derivatives (used in differential equation solver below)
+    def get_dlogx(self,t,x,calc_fluxes=False,eps=10**-6):
+        """Get time derivatives  1/N dN/dt (used in differential equation solver below)
 
         Options:
             calc_fluxes: If True, do not only return the total derivative, but also the individual contribution
@@ -255,7 +262,7 @@ class LandscapeModel():
                 xx = ndimage.gaussian_filter(x[i], sigma=drge[i], mode='wrap')
             else:
                 xx=ndimage.convolve(x[i],weights,mode='wrap')
-            dxdisp=disp[i]*xx/x[i]
+            dxdisp=disp[i]*xx/np.maximum(x[i],eps)
             dx[i]+=dxdisp
             if calc_fluxes:
                 fluxes[2,i]+=np.abs(dxdisp)
@@ -273,11 +280,14 @@ class LandscapeModel():
             else:
                 xx= x[i]
                 xps=[x[p] for p in prey   ]
-            pred = np.array([xx * xp *prm['trophic']['mean'] for xp  in xps])
+            # pred = np.array([xx * xp *prm['trophic']['mean'] for xp  in xps])
+            pred = np.array([xp *prm['trophic']['mean'] for xp  in xps])
 
-            dxprey=-pred*x[prey]/xps
+            # dxprey=-pred*x[prey]/np.maximum(xps,eps)
+            dxprey=-xx.reshape((1,)+xx.shape)
             dx[prey]+=dxprey
-            dxpred=np.sum(pred,axis=0)*x[i]/xx *prm['trophic']['efficiency'] #(1-x[i])
+            # dxpred=np.sum(pred,axis=0)*x[i]/np.maximum(xx,eps) *prm['trophic']['efficiency'] #(1-x[i])
+            dxpred=np.sum(pred,axis=0) *prm['trophic']['efficiency'] #(1-x[i])
             dx[i]+= dxpred
             if calc_fluxes:
                 fluxes[0,i]+=np.abs(dxpred)
@@ -308,7 +318,8 @@ class LandscapeModel():
         # return dxlin
         return dx
 
-    def get_kernel(self,a,k,kernel='gauss'):
+    def get_kernel_FT(self,a,k,kernel='gauss'):
+        """Fourier Transform of the spatial kernel"""
         lx, ly = k.shape
         if a<=0.1:
             return np.ones(k.shape)
@@ -347,7 +358,7 @@ class LandscapeModel():
             if not len(prey):
                 continue
 
-            Aij=np.tensordot(trophic[i][prey] , self.get_kernel(self.data['trophic_scale'][i],k,
+            Aij=np.tensordot(trophic[i][prey] , self.get_kernel_FT(self.data['trophic_scale'][i],k,
                                                                 prm['trophic']['kernel'] ),axes=0)
 
             dxprey = - x[i] * Aij
@@ -361,7 +372,7 @@ class LandscapeModel():
         # Competition
         if prm['competition']['ON']:
             comp = data['competition']
-            dxcomp = np.tensordot(comp, x*[ self.get_kernel(self.data['competition_scale'][i],k,
+            dxcomp = np.tensordot(comp, x*[ self.get_kernel_FT(self.data['competition_scale'][i],k,
                                                     prm['competition']['kernel']) for i in range(N)], axes=(1, 0))
         else:
             dxcomp=0
@@ -470,6 +481,9 @@ class LandscapeModel():
 
     def evol(self,tmax=10,nsample=10,dt=.1,keep='all',print_msg=1,method='scipy',use_Fourier=0, **kwargs):
         """Time evolution of the model"""
+
+        if not method in self.methods:
+            raise Exception('ERROR: Method "{}" not found'.format(method))
 
         if kwargs.get('reseed',1) or not self.data:
             # Create new matrices and initial conditions

@@ -1,4 +1,4 @@
-Simulation experiments for multi-scale ecological interactions.
+Simulation experiments for multi-scale ecological interactions. (v1.0 - July 14th 2018)
 =======
 
 ## Requirements:
@@ -22,12 +22,6 @@ Simulation experiments for multi-scale ecological interactions.
 
     python landscapesimu.py rerun
 
- *Run with/out multiscale interactions (without is faster, useful for tests)* (NB: brackets = optional/alternative)
-
-    python landscapesimu.py [multiscale=0]  # (None)
-    python landscapesimu.py multiscale[=all]  # (All interactions)
-    python landscapesimu.py multiscale=[trophic,competition]  # (Only one interaction)
-
  *Change other parameters (simulation runtime, number of snapshots taken)*
 
     python landscapesimu.py tmax=500 nsample=50
@@ -36,6 +30,12 @@ Simulation experiments for multi-scale ecological interactions.
 
     python landscapesimu.py movie
 
+ * Obsolete with Fourier: Run with/out multiscale interactions (without is faster, useful for tests)*
+   (NB: brackets = optional/alternative)
+
+    python landscapesimu.py [multiscale=0]  # (None)
+    python landscapesimu.py multiscale[=all]  # (All interactions)
+    python landscapesimu.py multiscale=[trophic,competition]  # (Only one interaction)
 
 ## Where to edit:
 

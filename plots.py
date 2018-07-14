@@ -98,6 +98,16 @@ def detailed_plots(path,save=0,movie=0):
         plt.vlines(np.arange(N),c-w,c+w )
         plt.title('Species abiotic niche')
 
+
+        #Food web
+        if model.prm['trophic']['ON']:
+            figweb=plt.figure(figsize=np.array(mpfig.rcParams['figure.figsize'])*(2,2) )
+            draw_network(model.data['trophic'],ypos=dict(zip(range(N),model.data['size'] )),newfig=0,hold=1)
+            plt.ylabel('Body size')
+            plt.title('Food web')
+        else:
+            figweb=None
+
         #Role of different interactions
         figdynamics=plt.figure(figsize=np.array(mpfig.rcParams['figure.figsize'])*(3,3) )
         panel=0
@@ -121,6 +131,33 @@ def detailed_plots(path,save=0,movie=0):
         plt.xlabel('Size')
         plt.yscale('log')
         plt.ylabel('Abundance')
+        plt.title('Size spectrum')
+
+        #SAR
+        figSAR=plt.figure()
+        nstart=100
+        startpos=(np.random.randint(prm['landx'],size=nstart),np.random.randint(prm['landy'],size=nstart) )
+        dist=(np.add.outer(startpos[0],-startpos[0])**2+np.add.outer(startpos[1],-startpos[1])**2)
+        SARS=[[],[]]
+        for i in range(nstart):
+            order=np.argsort(dist[i])
+            xs=dist[i,order]
+            ys=[nf[:,startpos[0][o],startpos[1][o]]>death for o in order]
+            ys=np.cumsum(ys,axis=0)
+            ys=np.sum(ys>0,axis=1)
+            plt.plot(xs,ys)
+            SARS[0]+=list(xs)
+            SARS[1]+=list(ys)
+            # code_debugger()
+        xs,ys=np.array(SARS)
+        bins=np.logspace(np.min(np.log10(xs[xs>0])),np.max(np.log10(xs[xs>0])),20)
+        ibins=np.digitize(xs,bins)
+        plt.plot(bins,[np.mean(ys[ibins==i] )  for i in range(len(bins)) ] ,lw=3,c='k')
+        plt.xscale('log')
+        plt.title('SAR')
+        plt.xlabel('Area')
+        plt.ylabel('Diversity')
+
 
         #BEF
         figBEF=plt.figure()
@@ -157,8 +194,11 @@ def detailed_plots(path,save=0,movie=0):
             figenv.savefig(fpath+'Environment.png')
             figdynamics.savefig(fpath+'dynamics.png')
             figBEF.savefig(fpath+'BEF.png')
+            figSAR.savefig(fpath+'SAR.png')
             figtraj.savefig(fpath+'N_traj.png')
             figpyr.savefig(fpath+'N_pyramid.png')
+            if not figweb is None:
+                figweb.savefig(fpath+'foodweb.png')
         else:
             plt.show()
 
