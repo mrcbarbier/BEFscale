@@ -233,6 +233,10 @@ def draw_network(mat,ypos=None,xpos=None,directed=1,newfig=1,hold=0):
         xpos=dict(zip(nodes,np.random.random(N) ))
     if ypos is None:
         ypos=dict(zip(nodes,np.random.random(N)))
+    if not hasattr(xpos,'keys'):
+        xpos=dict(zip(nodes,xpos))
+    if not hasattr(ypos,'keys'):
+        ypos=dict(zip(nodes,ypos))
     xs = [xpos[n] for n in nodes]
     ys = [ypos[n] for n in nodes]
     xs,ys=np.array(xs),np.array(ys)
@@ -255,3 +259,12 @@ def draw_network(mat,ypos=None,xpos=None,directed=1,newfig=1,hold=0):
         plt.show()
     else:
         return fig
+
+def naive_trophic_score(A,r,z=.01):
+    M=np.eye(A.shape[0])-z*A
+    try:
+        result= np.log(np.dot(np.linalg.inv(M),r ))/np.log(z)
+    except Exception as e:
+        print e
+        result=np.zeros(r.shape)
+    return result

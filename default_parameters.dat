@@ -21,7 +21,7 @@
             'distribution':'noise',
             'method':'fft',
             'color':1, #Color of noise (spectral exponent)
-            'cutoff':.3, #Exponential cutoff on spectrum (max=1)
+            'cutoff':.2, #Exponential cutoff on spectrum (max=1)
         },
 
         #Species log-body size (trait used below to parametrize all interactions, trophic and nontrophic)
@@ -38,8 +38,9 @@
         },
             #Width
         'envniche_width':{
-            'mean':20., 'std':5,
+            'mean':8., 'std':2,
             'distribution':'normal',
+            'sign':1,
         },
 
         #Trophic interactions
@@ -50,12 +51,14 @@
             'mean':1., 'std':0.1,
             'distribution':'normal',
             'shape':('species','species'),
-            'efficiency':0.9,
+            'efficiency':0.4,
 
             #Predation range (size range of edible prey)
-            'distance':.25, #Distance of upper limit of eating range to predator trait (if > 0, predator cannot eat equal size)
-            'width':.25, #Half-width of eating range
-            'range_exp':.5, #Exponent for how width changes with trait value
+            'distance':.25, #Distance of upper limit of predation range to predator trait (if > 0, predator cannot eat equal size)
+            'width':.25, #Half-width of predation range
+            'range_exp':.5, #Exponent for how width changes with trait
+            'connectance':.5, #Connectance within predation range
+            'randomness':0, #Randomness in range center
 
             #Spatial scaling
             'multiscale':1, #Switch ON/OFF multiscale (always ON in Fourier)

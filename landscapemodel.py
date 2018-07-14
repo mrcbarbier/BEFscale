@@ -188,12 +188,21 @@ class LandscapeModel():
                     if not range_exp is 0:
                         oldcenter=center
                         center= center*(trait**range_exp).reshape( trait.shape+(1,) )
+                        sig=dprm.get('randomness',0)
+                        if sig>0:
+                            center+= np.random.normal(0,sig, size=center.shape)
                         width=width*center/oldcenter+np.min(np.abs(dist),axis=1)
 
                     # Set interactions to zero if the prey does not fall in the eating range
                     mat[dist > -center + width] = 0
                     mat[dist<-center-width ]=0
                     np.fill_diagonal(mat,0)
+                    first=np.argmax(mat,axis=1)
+                    notfirst=np.ones(mat.shape)
+                    notfirst[(range(mat.shape[0]),first)]=0
+                    nbpred=np.sum( np.sum(mat,axis=1)>0 )
+                    mat[np.logical_and(np.random.random(mat.shape )>dprm.get('connectance',1),notfirst) ]=0
+                    assert nbpred==np.sum( np.sum(mat,axis=1)>0 )
                     data['trophic']=mat
             else:
                 mat=np.zeros((N,N))

@@ -48,6 +48,7 @@ def detailed_plots(path,save=0,movie=0):
 
         nf=model.results['n'][-1]
         N=prm['species']
+        size=model.data['size']
 
         #Species trajectories
         figtraj=plt.figure()
@@ -55,6 +56,7 @@ def detailed_plots(path,save=0,movie=0):
         for i in zip(*nsum):
             plt.plot(model.results['t'],i)
         plt.yscale('log')
+        plt.xscale('log')
         plt.xlabel('Time')
         plt.title('Total abundance per species')
 
@@ -101,8 +103,11 @@ def detailed_plots(path,save=0,movie=0):
 
         #Food web
         if model.prm['trophic']['ON']:
+            Pij=model.data['trophic']
+            trophic_height=naive_trophic_score(Pij,(np.sum(model.data['growth'],axis=(1,2))>0).astype('float') )+1
             figweb=plt.figure(figsize=np.array(mpfig.rcParams['figure.figsize'])*(2,2) )
-            draw_network(model.data['trophic'],ypos=dict(zip(range(N),model.data['size'] )),newfig=0,hold=1)
+            draw_network(Pij,#xpos=trophic_height/(size/np.min(size)+1)*np.random.normal(1,.2,size=size.shape),
+                         ypos=size,newfig=0,hold=1)
             plt.ylabel('Body size')
             plt.title('Food web')
         else:
@@ -127,15 +132,18 @@ def detailed_plots(path,save=0,movie=0):
 
         #Biomass pyramid
         figpyr=plt.figure()
-        plt.scatter(data['size'],np.sum(nf/death,axis=(1,2)))
+        ys=np.sum(nf/death,axis=(1,2))
+        survivors=(ys>1)
+        plt.scatter(data['size'][survivors],ys[survivors])
         plt.xlabel('Size')
         plt.yscale('log')
+        plt.xscale('log')
         plt.ylabel('Abundance')
         plt.title('Size spectrum')
 
         #SAR
         figSAR=plt.figure()
-        nstart=100
+        nstart=200
         startpos=(np.random.randint(prm['landx'],size=nstart),np.random.randint(prm['landy'],size=nstart) )
         dist=(np.add.outer(startpos[0],-startpos[0])**2+np.add.outer(startpos[1],-startpos[1])**2)
         SARS=[[],[]]
@@ -145,14 +153,15 @@ def detailed_plots(path,save=0,movie=0):
             ys=[nf[:,startpos[0][o],startpos[1][o]]>death for o in order]
             ys=np.cumsum(ys,axis=0)
             ys=np.sum(ys>0,axis=1)
-            plt.plot(xs,ys)
+            plt.plot(xs,ys,alpha=0.2)
             SARS[0]+=list(xs)
             SARS[1]+=list(ys)
             # code_debugger()
         xs,ys=np.array(SARS)
         bins=np.logspace(np.min(np.log10(xs[xs>0])),np.max(np.log10(xs[xs>0])),20)
         ibins=np.digitize(xs,bins)
-        plt.plot(bins,[np.mean(ys[ibins==i] )  for i in range(len(bins)) ] ,lw=3,c='k')
+        nonempty=[i for i in range(len(bins)) if (ibins==i).any() ]
+        plt.plot(bins[nonempty],[np.mean(ys[ibins==i] )  for i in nonempty ] ,lw=3,c='k')
         plt.xscale('log')
         plt.title('SAR')
         plt.xlabel('Area')
