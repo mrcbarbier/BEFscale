@@ -53,9 +53,12 @@ class LandscapeModel():
             changes={}
         for i,j in kwargs.iteritems():
             if i in self.dft_prm:
-                self.prm.setdefault(i,{})
-                for k in j:
-                    self.prm[i][k]=j[k]
+                if hasattr(self.dft_prm[i],'keys'):
+                    self.prm.setdefault(i,{})
+                    for k in j:
+                        self.prm[i][k]=j[k]
+                else:
+                    self.prm[i]=j
                 continue
             try:
                 part=i.split('_')
@@ -117,13 +120,24 @@ class LandscapeModel():
                 return 0
             return 1
 
-        for name in prm:
+        def unwrap(dic,as_dict=1):
+            """When nested dictionaries in prm (e.g. 'niche':{'width:{...}}, de-nest them into {'niche_width':...}"""
+            if not hasattr(dic,'keys'):
+                return []
+            lst=[]
+            for i in dic:
+                k=dic[i]
+                if hasattr(k,'keys'):
+                    lst+=[(i,k)]+[('{}_{}'.format(i,j),l) for j,l in  unwrap(k,as_dict=0)]
+            if as_dict:
+                return dict(lst)
+            return lst
+
+        for name,dprm in unwrap(prm).iteritems():
             if keep(name):
                 continue
-            dprm=prm[name]
             if not isinstance(dprm,dict) or not 'distribution' in dprm:
                 continue
-
             if 'shape' in dprm:
                 shape=dprm['shape']
             else:
@@ -140,6 +154,9 @@ class LandscapeModel():
                     res=np.random.normal(dprm['mean'],dprm['std'],shape )
                 else:
                     res=np.ones(shape)*dprm['mean']
+            elif dist=='power':
+                xmin,xmax=dprm['range']
+                res= powlaw(dprm['exponent'],xmin,xmax,shape)
             elif dist=='noise':
                 # Generate noisy landscape
                 res=generate_noise(shape=shape,**{i:j for i,j in dprm.items() if i!='shape'} )
@@ -268,7 +285,7 @@ class LandscapeModel():
         rge=data['trophic_scale']
         for i in range(N):
             #Dispersal
-            if prm['dispersal']['multiscale']:
+            if prm['dispersal']['multiscale'] and 'dispersal_scale' in data:
                 drge = data['dispersal_scale']
                 xx = ndimage.gaussian_filter(x[i], sigma=drge[i], mode='wrap')
             else:
@@ -530,7 +547,7 @@ class LandscapeModel():
             integ='zvode'
         else:
             if 'noise' in self.data:
-                integ = 'lvode'
+                integ = 'lsoda'
             else:
                 integ = 'dop853'
             def get_dx(t,x):

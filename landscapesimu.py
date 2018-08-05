@@ -12,7 +12,9 @@ def loop(axes,path,rerun=0,multiscale=1,tmax=50,tsample=10,keep='all',**kwargs):
         will iterate over all possible combinations of species number and landscape width among given values,
         save results in directory tree in path, and plot results.
     """
-
+    if not isinstance(multiscale,basestring):
+        if multiscale:
+            multiscale='all'
     path=Path(path).mkdir()
     if not 'files.csv' in os.listdir(path):
         rerun=1
@@ -44,7 +46,7 @@ if __name__=='__main__':
     reseed=0 #Generate all coefficients anew for each run (0=keep same species and landscape, changing only what depends on looping parameters)
 
     multiscale=''#'all'     # Multiscale?
-    tmax=50    # Simulation length
+    tmax=250    # Simulation length
     nsample = 20  # Number of snapshots (by default, logarithmitically spaced)
     use_Fourier=1   # Optimized code using fourier transforms
     method='scipy'
@@ -80,8 +82,6 @@ if __name__=='__main__':
          reseed=reseed,multiscale=multiscale,use_Fourier=use_Fourier,method=method)
 
     # Plots
-    # Detailed plots for each simulation
-    detailed_plots(path,save=save,movie='movie' in sys.argv)
-
     # Summary plots for BEF over parameter values
-    summary_plots(path,axes=axes,save=save)
+    # If detailed=1, detailed plots for each simulation
+    summary_plots(path,axes=axes,save=save,detailed=1,movie='movie' in sys.argv)

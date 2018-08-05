@@ -1,4 +1,7 @@
 [
-    ('dispersal_mean',  [0.03,1.]),    #Mean dispersal strength
+    ('dispersal_mean',  [0.03,1.] ),    #Mean dispersal strength
+    #('trophic_scale',  [0.1,5,]),    #Trophic spatial scale
+    ('environment_cutoff',  [0.01,.2] ),    #Inverse of environment spatial scale
+    ('competition_scale',  [0.1,5] ),    #Competition spatial scale
     ('sys', range(1) )    #Dummy variable (change number in parentheses to make multiple runs with same parameters)
 ]

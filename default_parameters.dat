@@ -3,8 +3,8 @@
         'death':10**-3, #Extinction threshold (= 1 individual)
 
         #Landscape size -- Keep multiples of 2 for FFT
-        'landx':128,
-        'landy':128,
+        'landx':64,
+        'landy':64,
 
         #Abundance of each species at each pixel
         'n': {
@@ -31,27 +31,32 @@
         },
 
         #Environmental niche
+        'envniche':
+        {
             #Center
-        'envniche_pos':{
-            'range':(20,80),
-            'distribution':'uniform',
-        },
-            #Width
-        'envniche_width':{
-            'mean':8., 'std':2,
-            'distribution':'normal',
-            'sign':1,
+            'pos':{
+                'range':(0,100),
+                'distribution':'uniform',
+            },
+            #Half-width (standard deviation)
+            'width':{
+                'range':(1,10),
+                'distribution':'power',
+                'exponent':-1,
+                'sign':1,
+            },
         },
 
         #Trophic interactions
         'trophic':{
-            'ON':1, #Switch ON/OFF trophic interactions
+            'ON':0, #Switch ON/OFF trophic interactions
 
             #Coefficient values
             'mean':1., 'std':0.1,
             'distribution':'normal',
             'shape':('species','species'),
             'efficiency':0.4,
+            'diagonal':0, #If 0, no cannibalism
 
             #Predation range (size range of edible prey)
             'distance':.25, #Distance of upper limit of predation range to predator trait (if > 0, predator cannot eat equal size)
@@ -61,7 +66,7 @@
             'randomness':0, #Randomness in range center
 
             #Spatial scaling
-            'multiscale':1, #Switch ON/OFF multiscale (always ON in Fourier)
+            'multiscale':1, #FOR TESTS: Switch ON/OFF multiscale (always ON in Fourier)
             'scale':1., #Typical spatial scale (in pixels)
             'trait_exp':0.5, #Exponent for how scale changes with trait value
             'kernel':'gauss', #Spatial kernel
@@ -85,12 +90,12 @@
                 'diagonal':1,
 
                 #Interspecific
-                'mean': 0.1,'std':0.1,
+                'mean': 0.3,'std':0.1,
                 'sign':1, #Competition coefficients are non-negative (no facilitation)
                 'distribution':'normal',
 
             #Spatial scaling
-            'multiscale': 1, #Switch ON/OFF multiscale (always ON in Fourier)
+            'multiscale': 1, #FOR TESTS: Switch ON/OFF multiscale (always ON in Fourier)
             'scale':4., #Typical spatial scale (in pixels)
             'trait_exp':0, #Exponent for how scale changes with trait value
             'kernel':'gauss', #Spatial kernel

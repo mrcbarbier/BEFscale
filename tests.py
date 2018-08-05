@@ -50,6 +50,29 @@ def algotest(path='TEST/algotest',**kwargs):
     ABtest(comparison,path,**kwargs)
 
 
+
+
+def environment(path):
+    """Compare color and cutoff"""
+    from landscapesimu import loop, summary_plots
+    axes=[
+        ('dispersal_mean', np.logspace(-1,.5,2) ),  # Mean dispersal strength
+        ('environment_cutoff',[.01,.2]  ),    #Environment heterogeneity
+        ('environment_color',[1.,3.]  ),    #Environment heterogeneity
+        # ('competition_mean',[0.1,0.3][:1] ), #Interspecific competition strength
+        # ('competition_scale', [0.1, 5][:] ),  # Competition spatial scale
+        ('sys', range(1))  # Dummy variable (change number in parentheses to make multiple runs with same parameters)
+    ]
+    loop(axes=axes,path=path,tmax=250,nsample=20,rerun='rerun' in sys.argv,species=30,
+         reseed=0,use_Fourier=1,method='scipy')
+    summary_plots(path,save=1,detailed=1,movie='movie' in sys.argv,rerun='rerun' in sys.argv or 'replot' in sys.argv,
+                  values=[ ('checker_r2','Checkerboard pattern')])
+
+
 if __name__=='__main__':
-    # FTtest(debug='debug' in sys.argv,species=16,tmax=10)
-    algotest(debug='debug' in sys.argv,species=16,tmax=10)
+    if 'FT' in sys.argv:
+        FTtest(debug='debug' in sys.argv,species=16,tmax=10)
+    elif 'algo' in sys.argv:
+        algotest(debug='debug' in sys.argv,species=8,tmax=100)
+    else:
+        environment(Path('TEST/environment'))

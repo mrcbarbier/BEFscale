@@ -51,6 +51,32 @@ def setpos_FT(x):
         code_debugger()
     return x2
 
+def linfit(xs,ys,log=''):
+    """Convenience function for linear regression and subsequent plot."""
+    from scipy.stats import linregress
+    x,y=xs,ys
+    if 'x' in log:
+        x=np.log10(x)
+    if 'y' in log:
+        y = np.log10(y)
+    slope, intercept, r, p, stderr = linregress(x,y)
+    pxs=np.sort(xs)
+    pys=np.sort(x)
+    pys=slope*pys+intercept
+    if 'y' in log:
+        pys=10**(pys)
+    desc=r'${:.2f} + {:.2f} x$ ($R^2$={:.2f}, p={:.2f})'.format(intercept,slope,r**2,p)
+    if 'x' in log and 'y' in log:
+        desc=r"${{{: .2f}}} \; x^{{{: .2f}}}$ ($R^2$={:.2f}, p={:.2g})".format(10**intercept,slope,r**2,p)
+    return pxs,pys,desc,slope,intercept,r,p,stderr
+
+def powlaw(expo,xmin,xmax,shape=None):
+    """Generate numbers from a distribution proportional to x**expo"""
+    xx=expo+1
+    if not xx:
+        return np.exp(np.log(xmin) + np.log(xmax/xmin)*np.random.random(shape))
+    return (xmin**xx + (xmax**xx-xmin**xx)*np.random.random(shape))**(1./xx)
+
 def generate_noise(shape,method='fft', **dprm):
     """Generate noisy landscape (for now only method=fft and filter works convincingly"""
     samples = dprm.get('samples', 500)
