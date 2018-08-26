@@ -67,14 +67,14 @@
 
             #Spatial scaling
             'multiscale':1, #FOR TESTS: Switch ON/OFF multiscale (always ON in Fourier)
-            'scale':1., #Typical spatial scale (in pixels)
+            'scale':.1, #Typical spatial scale (in pixels)
             'trait_exp':0.5, #Exponent for how scale changes with trait value
             'kernel':'gauss', #Spatial kernel
         },
 
         #Dispersal
         'dispersal':{
-            'mean':1,
+            'mean':.1,
             'multiscale':0,  #Switch ON/OFF multiscale (ON not supported yet)
             'kernel':'gauss', #Spatial kernel (not supported yet)
             'trait_exp': 0, #Exponent for how spatial range of interaction changes with trait value
@@ -90,13 +90,12 @@
                 'diagonal':1,
 
                 #Interspecific
-                'mean': 0.3,'std':0.1,
-                'sign':1, #Competition coefficients are non-negative (no facilitation)
-                'distribution':'normal',
+                'distribution':'uniform',
+                'range': (0.0, 0.3),
 
             #Spatial scaling
             'multiscale': 1, #FOR TESTS: Switch ON/OFF multiscale (always ON in Fourier)
-            'scale':4., #Typical spatial scale (in pixels)
+            'scale':.1, #Typical spatial scale (in pixels)
             'trait_exp':0, #Exponent for how scale changes with trait value
             'kernel':'gauss', #Spatial kernel
         },

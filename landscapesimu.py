@@ -84,4 +84,4 @@ if __name__=='__main__':
     # Plots
     # Summary plots for BEF over parameter values
     # If detailed=1, detailed plots for each simulation
-    summary_plots(path,axes=axes,save=save,detailed=1,movie='movie' in sys.argv)
+    summary_plots(path,axes=axes,save=save,detailed=1,movie='movie' in sys.argv,rerun='rerun' in sys.argv or 'replot' in sys.argv)

@@ -56,9 +56,9 @@ def environment(path):
     """Compare color and cutoff"""
     from landscapesimu import loop, summary_plots
     axes=[
-        ('dispersal_mean', np.logspace(-1,.5,2) ),  # Mean dispersal strength
         ('environment_cutoff',[.01,.2]  ),    #Environment heterogeneity
         ('environment_color',[1.,3.]  ),    #Environment heterogeneity
+        ('dispersal_mean', np.logspace(-1,.5,2) ),  # Mean dispersal strength
         # ('competition_mean',[0.1,0.3][:1] ), #Interspecific competition strength
         # ('competition_scale', [0.1, 5][:] ),  # Competition spatial scale
         ('sys', range(1))  # Dummy variable (change number in parentheses to make multiple runs with same parameters)

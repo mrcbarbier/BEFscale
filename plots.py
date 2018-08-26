@@ -24,12 +24,22 @@ def basic_measures(model,dic):
                  'alpha_shannon':np.mean(DS), 'alpha_shannon_min':np.min(DS), 'alpha_shannon_max':np.max(DS),
                  'gamma_div':np.sum(np.sum(alive,axis=(1,2))>0 ) })
 
-
-    # from scipy.signal import correlate2d
-    # env=model.data['environment']
-    # dic.update({'landscape_scale':correlate2d(env,env)})
-
     return B, Bbasal, D, DS
+
+### I cannot think of a convenient way to measure stability (too high-dimensional for usual linear stability analysis
+# def stability_measures(model,dic):
+#     # try:
+#     import numdifftools as nd
+#     from scipy.linalg import solve_continuous_lyapunov as solve_lyapunov, norm, inv
+#     nf=model.results['n'][-1]
+#     def fun(*args):
+#         return model.get_dlogx(None, *args, calc_fluxes=0).ravel()
+#     Jfun = nd.Jacobian(fun)
+#     J= Jfun(nf,ravel()).reshape(nf.shape)
+#     CIJ = [solve_lyapunov(J[:,i,j], -np.diag(nf)) for i,j in np.indices(J.shape[1:3])]
+#     return np.mean([np.trace(x) for x in CIJ])
+#     # except:
+#     #     print 'ERROR: '
 
 # ============= PLOTS =================
 
@@ -100,6 +110,35 @@ def detailed_plots(path,save=0,movie=0,**kwargs):
         figs['N_final']=fig
         plt.suptitle('Final abundance')
 
+        srcdf=[]
+        fig1 = plt.figure(figsize=np.array(mpfig.rcParams['figure.figsize']) * (3, 3))
+        plt.suptitle('Carrying capacity')
+        fig2 = plt.figure(figsize=np.array(mpfig.rcParams['figure.figsize']) * (3, 3))
+        plt.suptitle('Relative difference between N and K')
+        panel=0
+        for i in range(N):
+            K=np.maximum(0,( model.data['growth'][i] - model.data['mortality'][i])/model.data['competition'][i,i])
+            ni=model.results['n'][-1][i]
+            diff=ni-K
+            sm=K+death#+ni
+            srcdf.append({'species':i, 'sink':ifelse(np.max(diff)>0,np.mean( (diff/sm)[diff>0]),0),
+                               'source':ifelse(np.min(diff)<0,np.mean((diff/sm)[diff<0])  ,0) } )
+            for fig,val in [(fig1,K/death),(fig2,diff)]:
+                plt.figure(num=fig.number)
+                panel, ax = auto_subplot(panel, N)
+                if fig == fig1:
+                    panel-=1
+                # vm=np.max(np.abs(val))
+                plt.imshow( val)#vmin=-vm,vmax=vm )  # ,vmin=0,vmax=1.2)
+                plt.colorbar()
+                plt.title('Species {}'.format(i))
+        figs['N_niche']=fig1
+        figs['N_niche_diff']=fig2
+        srcdf=pd.DataFrame(srcdf)
+        dic['source']=srcdf['source'].values
+        dic['sink']=srcdf['sink'].values
+        dic['source_mean']=np.mean(srcdf['source'].values)
+        dic['sink_mean']=np.mean(srcdf['sink'].values)
 
         #Species environmental niches
         # figenv=plt.figure()
@@ -166,35 +205,50 @@ def detailed_plots(path,save=0,movie=0,**kwargs):
         plt.ylabel('Abundance')
         plt.title('Size spectrum')
 
-        #SAR
-        figs['SAR']=plt.figure()
+        #SAR and EF-AR
+        figs['SAR']=plt.figure(figsize=np.array(mpfig.rcParams['figure.figsize'])*(3,1))
         nstart=200
         startpos=(np.random.randint(prm['landx'],size=nstart),np.random.randint(prm['landy'],size=nstart) )
         dist=(np.add.outer(startpos[0],-startpos[0])**2+np.add.outer(startpos[1],-startpos[1])**2)
-        SARS=[[],[]]
+        SARS={'area':[],'S':[],'B':[] ,'p':[], }
         for i in range(nstart):
             order=np.argsort(dist[i])
             xs=dist[i,order]
-            ys=[nf[:,startpos[0][o],startpos[1][o]]>death for o in order]
-            ys=np.cumsum(ys,axis=0)
-            ys=np.sum(ys>0,axis=1)
-            plt.plot(xs,ys,alpha=0.2)
-            SARS[0]+=list(xs)
-            SARS[1]+=list(ys)
+            Ss=[nf[:,startpos[0][o],startpos[1][o]]>np.maximum(death,0.01*np.max(nf,axis=(1,2))) for o in order]
+            Ss=np.cumsum(Ss,axis=0) #cumsum over space
+            Ss=np.sum(Ss>0,axis=1) #sum over species
+            #Biomass
+            bs=[nf[:,startpos[0][o],startpos[1][o]] for o in order]
+            bs=np.sum(np.cumsum(bs,axis=0),axis=1)
+            #Productivity
+            ps= fluxes[0]+np.clip(fluxes[-1],0,None)
+            ps=np.sum(np.cumsum([ps[:,startpos[0][o],startpos[1][o]] for o in order],axis=0),axis=1)
+            SARS['area']+=list(xs)
+            SARS['S']+=list(Ss)
+            SARS['B']+=list(bs)
+            SARS['p']+=list(ps)
             # code_debugger()
-        SARS=np.array(SARS)
-        xs,ys=SARS
-        bins=np.logspace(np.min(np.log10(xs[xs>0])),np.max(np.log10(xs[xs>0])),20)
+        SARS={k:np.array(SARS[k]) for k in SARS}
+        xs=SARS['area']
+        bins=np.logspace(np.min(np.log10(xs[xs>0])),np.max(np.log10(xs[xs>0])),40)
         ibins=np.digitize(xs,bins)
         nonempty=[i for i in range(len(bins)) if (ibins==i).any() ]
-        sxs,sys=bins[nonempty],[np.mean(ys[ibins==i] )  for i in nonempty ]
-        plt.plot(sxs,sys ,lw=3,c='k')
-        dic['SAR']=np.array([sxs,sys])
-        plt.xscale('log')
-        plt.title('SAR')
-        plt.xlabel('Area')
-        plt.ylabel('Diversity')
-        # dic.update({'min':strength})
+        meanSARS={k:[np.mean(SARS[k][ibins==i] )  for i in nonempty ] for k in SARS}
+        meanSARS['area']=bins[nonempty]
+        dic['SAR']=meanSARS
+        plt.subplot(131)
+        [plt.plot(xs,ys, alpha=0.2)  for xs,ys in zip(SARS['area'].reshape((nstart,nstart)),SARS['S'].reshape((nstart,nstart))) ]
+        plt.plot(meanSARS['area'],meanSARS['S'] ,lw=3,c='k')
+        plt.xscale('log'),plt.xlabel('Area'),plt.ylabel('Diversity')
+        plt.subplot(132)
+        [plt.plot(xs,ys, alpha=0.2)  for xs,ys in zip(SARS['area'].reshape((nstart,nstart)),SARS['B'].reshape((nstart,nstart))) ]
+        plt.plot(meanSARS['area'],meanSARS['B'] ,lw=3,c='k')
+        plt.xscale('log'),plt.xlabel('Area'),plt.ylabel('Biomass')
+        plt.subplot(133)
+        [plt.plot(xs,ys, alpha=0.2)  for xs,ys in zip(SARS['area'].reshape((nstart,nstart)),SARS['p'].reshape((nstart,nstart))) ]
+        plt.plot(meanSARS['area'],meanSARS['p'] ,lw=3,c='k')
+        plt.xscale('log'),plt.xlabel('Area'),plt.ylabel('Productivity')
+        # code_debugger()
 
 
         #BEF
@@ -296,7 +350,9 @@ def summary_plots(path,axes=None,save=0,values=None,**kwargs):
         axes=[k for k in refprm  if len(np.unique(df[k].values))>1  and k != 'sys']
 
     figs={}
-    try:
+    if not values:
+        values=[]
+    if 1:
         import seaborn as sns
         def dist_axes(axes,names=None,max=3):
             if not names:
@@ -304,26 +360,34 @@ def summary_plots(path,axes=None,save=0,values=None,**kwargs):
             names=names[:max]
             return dict(zip(names[:len(axes)],axes[:len(names)]) )
         if 'SAR' in df:
-            sardf=pd.DataFrame([dict(zip(axes,row[axes].values)+[('area',x),('SAR',y)] ) for i,row in  df.iterrows() for x,y in zip(*row['SAR'])])
+            # sardf=pd.DataFrame([dict(zip(axes,row[axes].values)+[('area',x),('SAR',y)] ) for i,row in  df.iterrows() for x,y in zip(*row['SAR'])])
             # code_debugger()
-            figs['SAR']=sns.relplot(x='area',y='SAR',data=sardf,kind="line",**dist_axes(axes,max=4))
-            plt.xscale('log')
-
+            sardf=pd.concat([pd.DataFrame(dict(list(v[0].items())+[(i,j) for i,j in zip(axes,v[1:])] ) ) for v in df[['SAR']+list(axes)].values] )
+            figs['SAR']=sns.relplot(x='area',y='S',data=sardf,kind="line",**dist_axes(axes,max=4))
+            plt.xscale('log'),plt.suptitle('Species-Area relationship')
+            figs['BAR'] = sns.relplot(x='area', y='B', data=sardf, kind="line", **dist_axes(axes, max=4))
+            plt.xscale('log'),plt.suptitle('Biomass-Area relationship')
+            figs['pAR'] = sns.relplot(x='area', y='p', data=sardf, kind="line", **dist_axes(axes, max=4))
+            plt.xscale('log'),plt.suptitle('Productivity-Area relationship')
+            figs['BEF'] = sns.relplot(x='S', y='B', data=sardf, kind="line", **dist_axes(axes, max=4))
+            plt.xscale('log'),plt.yscale('log'),plt.suptitle('Diversity-Biomass relationship')
 
         # Figure: effects of dispersal
         results=[ ('alpha_div', 'Alpha diversity'), ('alpha_div_min', 'Alpha diversity min'),
                   ('alpha_div_max', 'Alpha diversity max'),('biomass_tot','Total biomass'),
+                  ('source_mean','Fraction biomass lost from source patches'),
+                  ('sink_mean','Fraction biomass gained on sink patches'),
                   ] + list(values)
         for ax in axes:
-            df[ax]= [np.round(z,int(max(1,np.ceil(-np.log10(z)))))  for z in df[ax].values ]
+            if df[ax].min()>0:
+                df[ax]= [np.round(z,int(max(1,np.ceil(-np.log10(z)))))  for z in df[ax].values ]
         for value,title in results:
             # panel, ax = auto_subplot(panel, len(results))
             axd=[ax for ax in axes if not 'dispersal' in ax]
             figs[value]=sns.catplot(x='dispersal_mean', y=value,  data=df,kind='box',
                                          height=6, aspect=.75, linewidth=2.5, **dist_axes(axd))
             plt.suptitle(title)
-    except Exception as e:
-        print e
+
 
     if save:
         if isinstance(save,basestring) or isinstance(save,Path):

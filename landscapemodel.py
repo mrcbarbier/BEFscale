@@ -111,12 +111,15 @@ class LandscapeModel():
         prm=self.prm
         N=prm['species']
         data=self.data
+        dependencies={'growth':['environment','trophic','size'],'mortality':['environment'],'trophic_scale':['trophic','size'],
+                      'trophic':['size'],
+                      'competition_scale':['competition','size'], 'competition':['size']}
 
         def keep(name):
             # Must keep existing data with this name
             if labels is None:
                 return 0
-            if  name in labels:
+            if  name in labels or  set(labels).intersection(dependencies.get(name,[])) :
                 return 0
             return 1
 
@@ -279,8 +282,8 @@ class LandscapeModel():
         x=np.clip(x,death,None)
 
         if calc_fluxes:
-            typfluxes=['Trophic +', 'Trophic -', 'Dispersal', 'Competition', 'Linear']
-            fluxes=np.zeros((5,)+x.shape)
+            typfluxes=['Trophic +', 'Trophic -', 'Source', 'Sink', 'Competition', 'Linear']
+            fluxes=np.zeros((6,)+x.shape)
 
         rge=data['trophic_scale']
         for i in range(N):
@@ -293,7 +296,8 @@ class LandscapeModel():
             dxdisp=disp[i]*xx/np.maximum(x[i],eps)
             dx[i]+=dxdisp
             if calc_fluxes:
-                fluxes[2,i]+=np.abs(dxdisp)
+                fluxes[2,i]+=np.clip(dxdisp,None,0)
+                fluxes[3,i]+=np.clip(dxdisp,0,None)
 
             if not prm['trophic']['ON']:
                 continue
@@ -337,8 +341,8 @@ class LandscapeModel():
 
         dx[dead]=np.clip(dx[dead],0,None)
         if calc_fluxes:
-            fluxes[3]+=-np.abs(dxcomp)
-            fluxes[4]+=dxlin
+            fluxes[4]+=-np.abs(dxcomp)
+            fluxes[5]+=dxlin
             return dx,typfluxes,fluxes
         if t==0 and 0:
             plt.figure()
@@ -593,6 +597,7 @@ class LandscapeModel():
                         print('Time {}'.format(t) )
                     if keep=='all' or t+dt>tmax:
                         self.save_results(tsamp, x, use_Fourier=use_Fourier, print_msg=print_msg,death=death)
+
         return 1
 
 
@@ -636,7 +641,7 @@ class Looper(object):
 
         reseed=kwargs.get('reseed',1)
         if self.model and not reseed:
-            model=self.model[dic['sys']]
+            model=deepcopy(self.model[dic['sys']])
             model.set_params(regen=1,**kwargs)
         else:
             model=self.Model(**kwargs)
@@ -732,7 +737,7 @@ class Looper(object):
                 if kwargs.get('print_msg',1):
                     print(folder)
 
-
+            kwargs.setdefault('init','restart')
             if axes:
                 table+=self.loop(*args,axes=axes,path=respath+folder, **kwargs)
             else:
