@@ -75,16 +75,17 @@ class LandscapeModel():
                 if p in dico or kwargs.get('force',1) and p!=i:
                     if not p in dico:
                         print('set_params forcing:',i,p,j)
+                    if test or (regen and j!=dico[p]):
+                        changes[i]=path
                     if not test:
                         dico[p]=j
-                    if test or regen:
-                        changes[i]=path
             except TypeError:
                 pass
         if test:
             return changes
         if regen:
             #Only recreate whatever is changed by the imposed parameters
+            print changes
             self.generate([i[0] for i in changes.values() ] )
         return self.prm
 
@@ -165,6 +166,7 @@ class LandscapeModel():
                 res=generate_noise(shape=shape,**{i:j for i,j in dprm.items() if i!='shape'} )
                 rge=dprm['range']
                 res=rge[0]+(res-np.min(res))*(rge[1]-rge[0])/(np.max(res)-np.min(res)) #Rescale generated noise
+
             if 'diagonal' in dprm:
                 np.fill_diagonal(res,dprm['diagonal'])
             if 'sign' in dprm:
@@ -181,6 +183,7 @@ class LandscapeModel():
 
             if name=='size':
                 data['size']=np.sort(data['size']) #Order species by size (for convenience of plotting)
+
 
         trait=data['size']
 
@@ -252,20 +255,58 @@ class LandscapeModel():
         #Fitness with respect to abiotic environment, between 0 and 1, controls both growth and mortality
         abioticfit=np.exp(-(pos-env.reshape((1,)+env.shape))**2 /(2*wid**2)  )
         if not keep('growth'):
-            data['growth']=growth*abioticfit
+            data['growth']=growth=growth*abioticfit
         if not keep('mortality'):
             data['mortality']=mortality*(1-abioticfit)
 
 
+        #=== Initial condition
+        if not keep('n'):
+            res=1
+            if prm['n'].get('spatial',None) == 'spotty':
+                dist = prm['n']['distribution_prm']
+                width=dist.get('width',None)
+                spots = range(dist['number'])
+                axes = dist['axes']
+                shape=self.results['n'][-1].shape
+                othaxes = [a for a in range(len(shape)) if not a in axes]
+                res = np.zeros(shape)
+                for othidx in itertools.product(*[range(shape[oth]) for oth in othaxes]):
+                    idx = [slice(None) for a in range(len(shape))]
+                    for o, v in zip(othaxes, othidx):
+                        idx[o] = v
+                    idx = tuple(idx)
+                    candidates = zip(*np.where(growth[idx]>.1))
+                    candidates=[candidates[c] for  c in np.random.choice(range(len(candidates)),size=len(spots),replace=0)]
+                    for c in candidates:
+                        sidx=list(idx)
+                        for o,v in zip(axes,c):
+                            sidx[o]=v
+                        sidx=tuple(sidx)
+                        res[sidx] = 1
+                    if not width is None:
+                        kernel=np.ones([int(width*shape[a] ) for a in axes ])
+                        if dist.get('shape',None)=='blot':
+                            ksh=np.array(kernel.shape,dtype='int')
+                            mn,sd=ksh/2.,ksh/4.
+                            mn,sd=[x.reshape(x.shape+tuple(1 for i in range(len(ksh))) ) for x in (mn,sd) ]
+                            kernel*=np.exp( - np.sum((np.indices(ksh) - mn)**2/(2*(sd)**2),axis=0) )
+                            kernel[kernel<.2]=0
+                            kernel/=np.max(kernel)
+                        from scipy.signal import convolve
+                        res[idx]=convolve(res[idx], kernel, mode='same')
+            self.results['n'][-1]*=res
 
-    def get_dlogx(self,t,x,calc_fluxes=False,eps=10**-6):
+
+    def get_dx(self,t,x,calc_fluxes=False,eps=10**-6):
         """Get time derivatives  1/N dN/dt (used in differential equation solver below)
 
         Options:
             calc_fluxes: If True, do not only return the total derivative, but also the individual contribution
                 of each term in the equation (dispersal, interactions...) to see which ones control the dynamics."""
-
+        # x=x.copy()
         dx=np.zeros(x.shape)
+        dxconst=np.zeros(x.shape)
 
         #Default convolution weights for dispersal when multiscaling switched off
         weights = np.zeros((3, 3), dtype='float')
@@ -279,7 +320,8 @@ class LandscapeModel():
         N=prm['species']
         death=prm.get('death',10**-15)
         dead=np.where(x<death)
-        x=np.clip(x,death,None)
+        # x=np.clip(x,death,None)
+        # x[dead]=0
 
         if calc_fluxes:
             typfluxes=['Trophic +', 'Trophic -', 'Source', 'Sink', 'Competition', 'Linear']
@@ -293,8 +335,8 @@ class LandscapeModel():
                 xx = ndimage.gaussian_filter(x[i], sigma=drge[i], mode='wrap')
             else:
                 xx=ndimage.convolve(x[i],weights,mode='wrap')
-            dxdisp=disp[i]*xx/np.maximum(x[i],eps)
-            dx[i]+=dxdisp
+            dxdisp=disp[i]*xx
+            dxconst[i]+=dxdisp
             if calc_fluxes:
                 fluxes[2,i]+=np.clip(dxdisp,None,0)
                 fluxes[3,i]+=np.clip(dxdisp,0,None)
@@ -347,7 +389,7 @@ class LandscapeModel():
         if t==0 and 0:
             plt.figure()
             plt.imshow(x[0]*dxlin[0])
-        # return dxlin
+        dx=dxconst + (x-death)*dx
         return dx
 
     def get_kernel_FT(self,a,k,kernel='gauss'):
@@ -480,15 +522,20 @@ class LandscapeModel():
 
     def integrate(self,integrator,ti,tf,x,use_Fourier=0,**kwargs):
         tries=0
+        if np.sum(x)<kwargs.get('death',10**-10):
+            #If everyone is dead, just skip
+            return  x, True, '',None
         deltat=kwargs.get('deltat',None)
         if deltat is None:
             deltat= tf - ti
         t=lastfail=ti
-        x0=x
         result,success,error=None,False,None
         while (not success) or t<tf:
             if tries>kwargs.get("MAX_TRIES",500):
-                raise Exception("MAX TRIES reached in LandscapeModel.integrate")
+                error="ERROR: MAX TRIES reached in LandscapeModel.integrate"
+                result=x
+                t=tf
+                break
             if tries>0 and deltat>10**-15:
                 lastfail=t
                 if deltat/2 >= kwargs.get('mindeltat',0):
@@ -555,16 +602,20 @@ class LandscapeModel():
             else:
                 integ = 'dop853'
             def get_dx(t,x):
-                x=x.reshape(x0.shape)
-                return (x*self.get_dlogx(t,x)).ravel()
+                x=np.clip(x,0,None).reshape(x0.shape)
+                return (self.get_dx(t,x)).ravel()
 
         t,deltat=0,None
-        tsamples=list(np.logspace(np.log10(dt),np.log10(tmax),nsample ))
+        if kwargs.get('samplescale','log'):
+            tsamples=list(np.logspace(np.log10(dt),np.log10(tmax),nsample ))
+        else:
+            tsamples = list(np.linspace(dt,tmax, nsample))
+
         if method=='scipy':
             integrator = scint.ode(get_dx).set_integrator(integ, nsteps=500000)
             for ts in tsamples:
                 x, success, error,deltat = self.integrate(integrator,t,ts, x, use_Fourier=use_Fourier,print_msg=print_msg,
-                                                          deltat=deltat)
+                                                          deltat=deltat,**kwargs)
                 if error:
                     print error
                     return 0
@@ -576,7 +627,11 @@ class LandscapeModel():
                 if print_msg:
                     print('Time {}'.format(ts) )
                 if keep=='all' or ts+dt>=tmax:
-                    self.save_results(t,x.reshape(x0.shape),use_Fourier=use_Fourier,print_msg=print_msg,death=death)
+                    xx=x.reshape(x0.shape)
+                    if np.max(np.abs(xx-self.results['n'][-1]))<10**-5:
+                        print 'WARNING: EQUILIBRIUM REACHED'
+                        break
+                    self.save_results(t,xx,use_Fourier=use_Fourier,print_msg=print_msg,death=death)
         if method=='Euler':
             while t<tmax:
                 if  use_Fourier:
@@ -585,9 +640,9 @@ class LandscapeModel():
                     # x=x+dt*dx
                     x[:,cx,cy]=np.clip(x[:,cx,cy],0,None)
                 else:
-                    dx=self.get_dlogx(t,x)
-                    x*=(1+np.clip(dt* dx,-.999,None))
-                    x[x<death]=0
+                    dx=self.get_dx(t,x)
+                    x+=dt* dx
+                    x[x<10**-15]=0
                 t+=dt
                 if  t+dt > tsamples[0]:
                     tsamp=tsamples.pop(0)
@@ -619,7 +674,7 @@ def mp_run(array):
 
 class Looper(object):
     """Allows to recursively loop over parameter range, running a Model then saving results in a tree of folders."""
-
+    MAX_TRIALS=1
     def __init__(self,Model):
         self.Model=Model
         self.model={}
@@ -679,7 +734,7 @@ class Looper(object):
                 else:
                     print('### model diverged {} times, setting results to 0! ###'.format(kwargs['loop_trials']))
                     for var in model.results:
-                        model.results[var].matrix[:]=0
+                        model.results[var][:]=0
             if 'loop_trials' in kwargs:
                 del kwargs['loop_trials']
             model.save(path )
@@ -741,6 +796,11 @@ class Looper(object):
             if axes:
                 table+=self.loop(*args,axes=axes,path=respath+folder, **kwargs)
             else:
-                table+=self.loop_core(*args,path=respath+folder, **kwargs)
+                fpath=Path(respath + folder)
+                fpath.norm(),fpath.mkdir()
+                if not kwargs.get('rerun',0) and 'files.csv' in os.listdir(fpath):
+                    table+=[x.to_dict() for idx,x in pd.read_csv(fpath+'files.csv',index_col=None).iterrows()]
+                else:
+                    table+=self.loop_core(*args,path=fpath, **kwargs)
         return table
 

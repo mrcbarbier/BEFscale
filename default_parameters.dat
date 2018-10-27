@@ -1,12 +1,12 @@
    {
         'species':30,
-        'death':10**-3, #Extinction threshold (= 1 individual)
+        'death':10**-3, #Extinction threshold (= individual) knowing that max growth is 1
 
         #Landscape size -- Keep multiples of 2 for FFT
         'landx':64,
         'landy':64,
 
-        #Abundance of each species at each pixel
+        #Initial abundance of each species at each pixel
         'n': {
             'type':'variable',
             'shape': ('species','landx','landy'),

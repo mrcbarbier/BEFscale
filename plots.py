@@ -71,6 +71,8 @@ def detailed_plots(path,save=0,movie=0,**kwargs):
             fpath.mkdir()
 
         nf=model.results['n'][-1]
+        if len(nf.shape)<3:
+            nf=nf.reshape((1,)+nf.shape)
         N=prm['species']
         size=model.data['size']
 
@@ -180,7 +182,7 @@ def detailed_plots(path,save=0,movie=0,**kwargs):
         #Role of different interactions
         figs['dynamics']=plt.figure(figsize=np.array(mpfig.rcParams['figure.figsize'])*(3,3) )
         panel=0
-        dx,typfluxes,fluxes=model.get_dlogx(None, nf, calc_fluxes=1)
+        dx,typfluxes,fluxes=model.get_dx(None, nf, calc_fluxes=1)
         for i in range(N):
             panel,ax=auto_subplot(panel,N)
             for t, typ in enumerate(typfluxes):
@@ -278,33 +280,34 @@ def detailed_plots(path,save=0,movie=0,**kwargs):
             plt.ylabel(name)
 
         #Checkerboard pattern
-        figs['checkerboard']=plt.figure(figsize=np.array(mpfig.rcParams['figure.figsize']) * (3, 1))
-        corr=np.corrcoef([nf[i,:,:].ravel() for i in range(nf.shape[0])])
-        plt.subplot(131)
-        plt.colorbar(plt.imshow(corr, cmap='seismic_r', vmin=-1, vmax=1),
-                     ax=plt.gca())
-        plt.title('Spatial correlation')
-        plt.subplot(132)
-        mat=-model.data['competition']
-        if prm['trophic']['ON']:
-            tmat=model.data['trophic']
-            mat-=tmat.T-prm['trophic']['efficiency']*tmat
-        plt.title('Interaction matrix')
-        plt.colorbar(plt.imshow(mat, cmap='seismic_r', vmin=-np.max(np.abs(mat)), vmax=np.max(np.abs(mat))
-                 ),ax=plt.gca())
-        plt.subplot(133)
-        offdiag=(np.eye(mat.shape[0])==0)&(np.isnan(corr)==0)
-        xs,ys=mat[offdiag],corr[offdiag]
-        if xs.any():
-            strength=np.mean(ys)
-            plt.scatter(xs,ys)
-            pxs, pys, desc, slope, intercept, r, p, stderr = linfit(xs,ys)
-            plt.plot(pxs,pys,lw=2,color='k')
-            plt.xlabel('Interaction matrix'),plt.ylabel('Spatial correlation')
-            plt.title(r'{:.2f} + {:.2f} x ($R^2$={:.2f}, p={:.1g})'.format(intercept,slope,r**2,p))
-        else:
-            r,slope,strength=0,0,0
-        dic.update({'checker_r2':r**2,'checker_slope':slope ,'checker_strength':strength})
+        if N > 1:
+            figs['checkerboard']=plt.figure(figsize=np.array(mpfig.rcParams['figure.figsize']) * (3, 1))
+            corr=np.corrcoef([nf[i,:,:].ravel() for i in range(nf.shape[0])])
+            plt.subplot(131)
+            plt.colorbar(plt.imshow(corr, cmap='seismic_r', vmin=-1, vmax=1),
+                         ax=plt.gca())
+            plt.title('Spatial correlation')
+            plt.subplot(132)
+            mat=-model.data['competition']
+            if prm['trophic']['ON']:
+                tmat=model.data['trophic']
+                mat-=tmat.T-prm['trophic']['efficiency']*tmat
+            plt.title('Interaction matrix')
+            plt.colorbar(plt.imshow(mat, cmap='seismic_r', vmin=-np.max(np.abs(mat)), vmax=np.max(np.abs(mat))
+                     ),ax=plt.gca())
+            plt.subplot(133)
+            offdiag=(np.eye(mat.shape[0])==0)&(np.isnan(corr)==0)
+            xs,ys=mat[offdiag],corr[offdiag]
+            if xs.any():
+                strength=np.mean(ys)
+                plt.scatter(xs,ys)
+                pxs, pys, desc, slope, intercept, r, p, stderr = linfit(xs,ys)
+                plt.plot(pxs,pys,lw=2,color='k')
+                plt.xlabel('Interaction matrix'),plt.ylabel('Spatial correlation')
+                plt.title(r'{:.2f} + {:.2f} x ($R^2$={:.2f}, p={:.1g})'.format(intercept,slope,r**2,p))
+            else:
+                r,slope,strength=0,0,0
+            dic.update({'checker_r2':r**2,'checker_slope':slope ,'checker_strength':strength})
 
         if save:
             for f in figs:
@@ -380,7 +383,10 @@ def summary_plots(path,axes=None,save=0,values=None,**kwargs):
                   ] + list(values)
         for ax in axes:
             if df[ax].min()>0:
-                df[ax]= [np.round(z,int(max(1,np.ceil(-np.log10(z)))))  for z in df[ax].values ]
+                try:
+                    df[ax]= [np.round(z,int(max(1,np.ceil(-np.log10(z)))))  for z in df[ax].values ]
+                except:
+                    pass
         for value,title in results:
             # panel, ax = auto_subplot(panel, len(results))
             axd=[ax for ax in axes if not 'dispersal' in ax]

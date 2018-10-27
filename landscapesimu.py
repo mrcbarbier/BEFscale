@@ -17,10 +17,10 @@ def loop(axes,path,rerun=0,multiscale=1,tmax=50,tsample=10,keep='all',**kwargs):
             multiscale='all'
     path=Path(path).mkdir()
     if not 'files.csv' in os.listdir(path):
-        rerun=1
+        rebuild_filelist(path)
 
     # Get default parameter values (see landscapemodel.py for parameter list)
-    prm=deepcopy(LandscapeModel.dft_prm)
+    prm=kwargs.get('dft_prm',deepcopy(LandscapeModel.dft_prm))
 
     for i in prm:
         if 'multiscale' in str(prm[i]):
@@ -32,10 +32,8 @@ def loop(axes,path,rerun=0,multiscale=1,tmax=50,tsample=10,keep='all',**kwargs):
         if i in prm:
             prm[i]=j
 
-    if rerun:
-        Looper(LandscapeModel).loop(tmax=tmax,tsample=tsample,keep=keep,path=path,axes=axes,parameters=prm,**kwargs)
-        rebuild_filelist(path)
-
+    Looper(LandscapeModel).loop(tmax=tmax,tsample=tsample,keep=keep,path=path,axes=axes,parameters=prm,rerun=rerun,**kwargs)
+    rebuild_filelist(path)
 
 # Only run the following code if this script is executed directly
 if __name__=='__main__':
