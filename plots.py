@@ -123,7 +123,9 @@ def detailed_plots(path,save=0,movie=0,**kwargs):
             ni=model.results['n'][-1][i]
             diff=ni-K
             sm=K+death#+ni
-            srcdf.append({'species':i, 'sink':ifelse(np.max(diff)>0,np.mean( (diff/sm)[diff>0]),0),
+            Kmax,nmax=np.max(K),np.max(ni)
+            srcdf.append({'species':i, 'disperslim':np.mean( np.logical_and(K>.1*Kmax, ni<.1*Kmax) ) ,
+                            'sink':ifelse(np.max(diff)>0,np.mean( (diff/sm)[diff>0]),0),
                                'source':ifelse(np.min(diff)<0,np.mean((diff/sm)[diff<0])  ,0) } )
             for fig,val in [(fig1,K/death),(fig2,diff)]:
                 plt.figure(num=fig.number)
@@ -141,6 +143,8 @@ def detailed_plots(path,save=0,movie=0,**kwargs):
         dic['sink']=srcdf['sink'].values
         dic['source_mean']=np.mean(srcdf['source'].values)
         dic['sink_mean']=np.mean(srcdf['sink'].values)
+        dic['disperslim']=srcdf['disperslim'].values
+        dic['disperslim_mean']=srcdf['disperslim'].mean()
 
         #Species environmental niches
         # figenv=plt.figure()
@@ -380,6 +384,7 @@ def summary_plots(path,axes=None,save=0,values=None,**kwargs):
                   ('alpha_div_max', 'Alpha diversity max'),('biomass_tot','Total biomass'),
                   ('source_mean','Fraction biomass lost from source patches'),
                   ('sink_mean','Fraction biomass gained on sink patches'),
+                  ('disperslim_mean','Fraction of habitats that was not reached'),
                   ] + list(values)
         for ax in axes:
             if df[ax].min()>0:

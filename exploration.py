@@ -24,7 +24,7 @@ def single_species(path,tmax=1000,nsample=50,rerun=0,replot=0,**kwargs):
     loop(axes=axes,path=path,tmax=tmax,nsample=nsample,samplescale='linear',rerun=rerun,
          reseed=0,use_Fourier=0,method='scipy',dft_prm=prm,**kwargs)
 
-    summary_plots(path,axes=axes,save=1,movie=1,detailed=1,rerun=rerun or replot)
+    summary_plots(path,axes=axes,save=1,movie=0,detailed=1,rerun=rerun or replot)
 
 
 if __name__=='__main__':

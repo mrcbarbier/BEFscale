@@ -44,3 +44,7 @@ Simulation experiments for multi-scale ecological interactions. (v1.0 - July 14t
    Parameter values that are iterated over:  loop_parameters.dat
 
    Plots: plots.py
+
+## How to process images in /movie folder into a gif (Linux, with ImageMagick)
+
+   convert -delay 10 -loop 0 'fig%d.png[0-50]' movie.gif
